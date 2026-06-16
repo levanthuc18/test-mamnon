@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useMemo, memo } from "react";
 import { DiemDanhTab } from "./features/diem-danh";
-import { Badge, Card, SearchBar, StickyBar, Chips, useStickyShrink } from "./components/ui";
+import { ThuPhiTab } from "./features/thu-phi";
+import { DashTab, PhieuThu } from "./features/tong-quan";
+
+import { Badge, Card, SearchBar, StickyBar, Chips, useStickyShrink, NumInput, ABBtn, LockNote, PLBadge } from "./components/ui";
 import { sGet, sSet, sList, sDel, CHOT_MEM, saveChotMem } from "./services/storage";
 import { logAction, setActor } from "./services/logger";
 import { C, font } from "./constants/colors";
@@ -14,6 +17,64 @@ import type {
   HocSinh, Lop, FeeRecord, MonthData, Meta, ChiPhiItem,
   ThuNgoaiItem, PhuThuItem, LogEntry, NguoiThu, PhanLoai, TrangThai
 } from "./types";
+
+// ===== SEED DATA =====
+const SEED_META = {
+  tenTruong: "Mầm Non Tuổi Thần Tiên",
+  classes: [
+    { id: "c1", ten: "Sóc Nhí", hocPhi: 800000, banTru: 200000, tienAn: 30000, t7: 80000, veSinh: 20000, tiengAnh: 100000, ngoaiKhoa: 100000, dongPhuc: 200000, dauNam: 1200000, lapLai: { dauNam: "khong", dongPhuc: "khong" } },
+    { id: "c2", ten: "Sơn Ca", hocPhi: 800000, banTru: 200000, tienAn: 30000, t7: 80000, veSinh: 20000, tiengAnh: 100000, ngoaiKhoa: 100000, dongPhuc: 200000, dauNam: 1200000, lapLai: { dauNam: "khong", dongPhuc: "khong" } },
+    { id: "c3", ten: "Họa Mi", hocPhi: 700000, banTru: 200000, tienAn: 30000, t7: 80000, veSinh: 20000, tiengAnh: 100000, ngoaiKhoa: 100000, dongPhuc: 200000, dauNam: 1200000, lapLai: { dauNam: "khong", dongPhuc: "khong" } },
+    { id: "c4", ten: "Chích Bông", hocPhi: 700000, banTru: 200000, tienAn: 30000, t7: 80000, veSinh: 20000, tiengAnh: 100000, ngoaiKhoa: 100000, dongPhuc: 200000, dauNam: 1200000, lapLai: { dauNam: "khong", dongPhuc: "khong" } },
+    { id: "c5", ten: "Mickey", hocPhi: 700000, banTru: 200000, tienAn: 30000, t7: 80000, veSinh: 20000, tiengAnh: 100000, ngoaiKhoa: 100000, dongPhuc: 200000, dauNam: 1200000, lapLai: { dauNam: "khong", dongPhuc: "khong" } },
+    { id: "c6", ten: "Thỏ Bông", hocPhi: 700000, banTru: 200000, tienAn: 30000, t7: 80000, veSinh: 20000, tiengAnh: 100000, ngoaiKhoa: 100000, dongPhuc: 200000, dauNam: 1200000, lapLai: { dauNam: "khong", dongPhuc: "khong" } },
+  ],
+  bank: {
+    A: { chu: "Lê Thị Phương", stk: "19034529895014", nh: "Techcombank" },
+    B: { chu: "Lê Thị Hậu", stk: "1023827702", nh: "Vietcombank" },
+  },
+  soDuDauKy: { tienMatA: 0, tienMatB: 0, AnoB: 0, BnoA: 0 },
+  tyLeLaiA: 50,
+  soBienLai: { A: 0, B: 0 },
+  giaoVien: [
+    { id: "gv1", ten: "Cô Hoa", pin: "1111", lopId: "c1" },
+    { id: "gv2", ten: "Cô Lan", pin: "2222", lopId: "c2" },
+  ],
+};
+
+function seedThangData(ym, students, meta) {
+  const fees = {};
+  students.forEach((hs) => {
+    const lopId = lopOfMonth(hs, ym);
+    const lop = meta.classes.find((c) => c.id === lopId);
+    if (!TT_THU_PHI[hs.trangThai]) return;
+    const ngayAn = 24;
+    const rec = { ngayAn, buoiT7: hs.pl === "T7" ? 4 : 0, thucThu: 0, khoan: {}, khoanDefault: {}, phuThu: [] };
+    KHOAN.forEach((k) => {
+      const d = isKhongThu(lop, k.key) ? 0 : defaultKhoan(k.key, lop, hs, ngayAn);
+      rec.khoan[k.key] = d; rec.khoanDefault[k.key] = d;
+    });
+    fees[hs.id] = rec;
+  });
+  const chiPhi = [
+    { id: uid(), noiDung: "Lương giáo viên", soTien: 0, nguoiChi: "A", loai: "CO_DINH", daTra: 0 },
+    { id: uid(), noiDung: "Thực phẩm 1", soTien: 0, nguoiChi: "A", loai: "CO_DINH", daTra: 0 },
+    { id: uid(), noiDung: "Thực phẩm 2", soTien: 0, nguoiChi: "A", loai: "CO_DINH", daTra: 0 },
+    { id: uid(), noiDung: "Tiền điện", soTien: 0, nguoiChi: "A", loai: "CO_DINH", daTra: 0 },
+    { id: uid(), noiDung: "Tiền nước", soTien: 0, nguoiChi: "A", loai: "CO_DINH", daTra: 0 },
+  ];
+  return { fees, thuNgoai: [], chiPhi, daChot: false, khoanThuLop: [] };
+}
+
+function lopOfMonth(hs, ym) {
+  const hist = (hs.lopHistory || []).filter((h) => h.tuThang <= ym).sort((a, b) => a.tuThang.localeCompare(b.tuThang));
+  return hist.length ? hist[hist.length - 1].lop : (hs.lopHistory?.[0]?.lop || null);
+}
+function lopHienTai(hs) {
+  const h = (hs.lopHistory || []).slice().sort((a, b) => a.tuThang.localeCompare(b.tuThang));
+  return h.length ? h[h.length - 1].lop : null;
+}
+
 
 function LoginScreen({ meta, onLogin }) {
   const [mode, setMode] = useState(null); // null | 'admin' | 'gv'
@@ -136,6 +197,157 @@ function BackupExport({ meta, students }) {
     </>
   );
 }
+
+function ConfirmHost() {
+  const [state, setState] = useState(null);
+  useEffect(() => { _ask = (s) => setState(s); return () => { _ask = null; }; }, []);
+  if (!state) return null;
+  const close = (v) => { state.res(v); setState(null); };
+  const danger = state.opts.danger;
+  return (
+    <div onClick={() => close(false)} style={{ position: "fixed", inset: 0, background: "rgba(20,40,30,.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, padding: 20, maxWidth: 380, width: "100%", boxShadow: "0 10px 40px rgba(0,0,0,.2)" }}>
+        <div style={{ fontSize: 14.5, color: C.ink, whiteSpace: "pre-line", lineHeight: 1.55, marginBottom: 18 }}>{state.msg}</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => close(false)} style={{ flex: 1, padding: "11px 0", borderRadius: 10, border: `1.5px solid ${C.line}`, background: C.card, color: C.sub, fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: font.body }}>{state.opts.cancelText || "Hủy"}</button>
+          <button onClick={() => close(true)} style={{ flex: 1, padding: "11px 0", borderRadius: 10, border: "none", background: danger ? C.coral : C.pine, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: font.body }}>{state.opts.okText || "Đồng ý"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function ToastHost() {
+  const [msg, setMsg] = useState(null);
+  const t = useRef(null);
+  useEffect(() => { _toast = (m) => { setMsg(m); clearTimeout(t.current); t.current = setTimeout(() => setMsg(null), 2600); }; return () => { _toast = null; }; }, []);
+  if (!msg) return null;
+  return <div style={{ position: "fixed", bottom: 78, left: "50%", transform: "translateX(-50%)", zIndex: 100, background: C.ink, color: "#fff", padding: "11px 18px", borderRadius: 99, fontSize: 13.5, fontWeight: 600, maxWidth: "90%", textAlign: "center", boxShadow: "0 6px 20px rgba(0,0,0,.25)" }}>{msg}</div>;
+}
+
+// ====================================================================
+// [PQ] Man hinh dang nhap: Admin (PIN 1989) hoac GV (PIN rieng)
+function LoginScreen({ meta, onLogin }) {
+  const [mode, setMode] = useState(null); // null | 'admin' | 'gv'
+  const [pin, setPin] = useState("");
+  const [err, setErr] = useState("");
+  const tryAdmin = () => { if (pin.trim() === "1989") onLogin({ role: "admin" }); else setErr("Mã quản lý không đúng"); };
+  const tryGV = () => { const gv = meta?.giaoVien?.find((g) => g.pin === pin.trim()); if (gv) onLogin({ role: "gv", gvId: gv.id, ten: gv.ten, lopId: gv.lopId }); else setErr("PIN không đúng"); };
+  const lopTen = (id) => meta?.classes.find((c) => c.id === id)?.ten || "?";
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: font.body }}>
+      <div style={{ background: C.card, borderRadius: 20, padding: "30px 26px", width: "100%", maxWidth: 360, boxShadow: "0 8px 30px rgba(0,0,0,.08)", textAlign: "center" }}>
+        <div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 22, color: C.pine }}>{meta?.tenTruong || "Mầm Non"}</div>
+        <div style={{ fontSize: 13, color: C.sub, marginBottom: 22 }}>Quản lý điểm danh & thu phí</div>
+        {!mode && (<>
+          <button onClick={() => { setMode("admin"); setPin(""); setErr(""); }} style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: C.pine, color: "#fff", fontFamily: font.display, fontWeight: 700, fontSize: 15, cursor: "pointer", marginBottom: 12 }}>👩‍💼 Quản lý (Kế toán)</button>
+          <button onClick={() => { setMode("gv"); setPin(""); setErr(""); }} style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: `1.5px solid ${C.blueA}`, background: C.card, color: C.blueA, fontFamily: font.display, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>👩‍🏫 Giáo viên điểm danh</button>
+        </>)}
+        {mode && (<>
+          <div style={{ textAlign: "left", marginBottom: 8, fontSize: 13, fontWeight: 700, color: C.sub }}>{mode === "admin" ? "🔐 Nhập mã quản lý" : "👩‍🏫 Nhập PIN giáo viên"}</div>
+          <input type="password" inputMode="numeric" autoFocus value={pin} onChange={(e) => { setPin(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && (mode === "admin" ? tryAdmin() : tryGV())} placeholder={mode === "admin" ? "Mã quản lý" : "PIN của bạn"} style={{ width: "100%", padding: "12px", borderRadius: 10, border: `1.5px solid ${err ? C.coral : C.line}`, fontSize: 16, fontFamily: font.body, outline: "none", textAlign: "center", letterSpacing: 4 }} />
+          {err && <div style={{ fontSize: 12.5, color: C.coral, marginTop: 6 }}>{err}</div>}
+          <button onClick={mode === "admin" ? tryAdmin : tryGV} style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: mode === "admin" ? C.pine : C.blueA, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", marginTop: 12 }}>Vào</button>
+          <button onClick={() => { setMode(null); setPin(""); setErr(""); }} style={{ width: "100%", padding: "8px 0", borderRadius: 10, border: "none", background: "none", color: C.sub, fontSize: 13, cursor: "pointer", marginTop: 6 }}>‹ Quay lại</button>
+          {mode === "gv" && meta?.giaoVien?.length > 0 && <div style={{ marginTop: 12, fontSize: 11, color: C.gray, lineHeight: 1.6 }}>{meta.giaoVien.map((g) => <div key={g.id}>{g.ten} · lớp {lopTen(g.lopId)}</div>)}</div>}
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+// [P0-2] Sao luu / phuc hoi du lieu (co fallback copy/paste cho moi truong chan tai file)
+function BackupExport({ meta, students }) {
+  const [busy, setBusy] = useState(false);
+  const [outText, setOutText] = useState("");
+  const [outName, setOutName] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const dl = (text, name, type) => { try { const blob = new Blob([type === "csv" ? "\uFEFF" + text : text], { type: type === "csv" ? "text/csv;charset=utf-8;" : "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (e) {} };
+
+  const buildJSON = async () => {
+    const keys = await sList("mn5:"); const data = {};
+    for (const k of keys) data[k] = await sGet(k);
+    return JSON.stringify(data);
+  };
+  const buildCSV = async () => {
+    const keys = (await sList("mn5:thang:")).filter((k) => /mn5:thang:\d{4}-\d{2}$/.test(k)).sort();
+    const rows = [["Tháng", "Mã HS", "Tên", "Lớp", "Phải thu", "Đã thu", "Còn nợ"]];
+    for (const k of keys) {
+      const td = await sGet(k); if (!td?.fees) continue;
+      const ym = k.replace("mn5:thang:", ""); const y = Number(ym.slice(0, 4)), mo = Number(ym.slice(5));
+      const pm = mo === 1 ? 12 : mo - 1, py = mo === 1 ? y - 1 : y;
+      const ddPrevM = (await sGet(`mn5:dd:${ymKey(py, pm)}`)) || {};
+      for (const [sid, rec] of Object.entries(td.fees)) {
+        const hs = students.find((s) => s.id === sid); if (!hs) continue;
+        const lop = meta.classes.find((c) => c.id === lopOfMonth(hs, ym));
+        const nghi = Object.keys(ddPrevM[sid] || {}).length;
+        const ps = tinhPSFromRec(hs, rec, lop, nghi).tong; const tt = Number(rec.thucThu) || 0;
+        rows.push([ym, sid, hs.ten, lop?.ten || "", ps, tt, ps - tt]);
+      }
+    }
+    return rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  };
+
+  const doExport = async (kind) => {
+    setBusy(true);
+    try {
+      const text = kind === "json" ? await buildJSON() : await buildCSV();
+      const name = kind === "json" ? `sao-luu-mamnon-${new Date().toISOString().slice(0, 10)}.json` : `bao-cao-thu-phi-${new Date().toISOString().slice(0, 10)}.csv`;
+      dl(text, name, kind);                 // thu tai file (chay khi deploy that)
+      setOutText(text); setOutName(name);   // hien ra de copy (chay trong khung chat)
+    } catch (e) { toast("Lỗi xuất: " + e.message); }
+    setBusy(false);
+  };
+
+  const copyOut = async () => { try { await navigator.clipboard.writeText(outText); toast("Đã copy."); } catch { toast("Bôi đen ô bên dưới rồi Copy thủ công."); } };
+
+  const restore = async (text) => {
+    let data; try { data = JSON.parse(text); } catch { toast("Nội dung không hợp lệ."); return; }
+    const n = Object.keys(data).length;
+    if (!n) { toast("Không có dữ liệu."); return; }
+    if (!(await ask(`Phục hồi ${n} mục?\n⚠️ GHI ĐÈ toàn bộ dữ liệu hiện tại — không hoàn tác được.`, { danger: true, okText: "Phục hồi" }))) return;
+    setBusy(true);
+    try {
+      const old = await sList("mn5:");
+      for (const k of old) if (!(k in data)) await sDel(k);
+      for (const [k, v] of Object.entries(data)) await sSet(k, v);
+      toast("Đã phục hồi. Đang tải lại…");
+      setTimeout(() => location.reload(), 800);
+    } catch (e) { toast("Lỗi: " + e.message); setBusy(false); }
+  };
+  const importFile = async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; restore(await f.text()); };
+
+  return (
+    <>
+      <Card style={{ marginBottom: 12 }}>
+        <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 14.5, marginBottom: 4 }}>💾 Sao lưu dữ liệu</div>
+        <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 12 }}>Bấm để xuất. Nếu máy không tự tải file (do trình duyệt/khung xem trước chặn), nội dung sẽ hiện ra ô bên dưới để bạn <b>copy</b> và dán vào ghi chú/Zalo lưu lại.</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => doExport("json")} disabled={busy} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: C.pine, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Đang xử lý…" : "📥 Sao lưu toàn bộ (JSON)"}</button>
+          <button onClick={() => doExport("csv")} disabled={busy} style={{ padding: "10px 16px", borderRadius: 10, border: `1.5px solid ${C.pine}`, background: C.card, color: C.pine, fontWeight: 700, fontSize: 13.5, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>📊 Xuất Excel thu phí (CSV)</button>
+        </div>
+        {outText && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: C.sub }}>{outName}</span>
+              <button onClick={copyOut} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: C.blueA, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>📋 Copy</button>
+            </div>
+            <textarea readOnly value={outText} onFocus={(e) => e.target.select()} style={{ width: "100%", height: 110, fontSize: 11, fontFamily: "monospace", border: `1.5px solid ${C.line}`, borderRadius: 10, padding: 8, resize: "vertical", color: C.ink, background: "#FAFCFA" }} />
+          </div>
+        )}
+      </Card>
+      <Card>
+        <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 14.5, marginBottom: 4 }}>♻️ Phục hồi</div>
+        <div style={{ fontSize: 12, color: C.coral, fontWeight: 600, marginBottom: 10 }}>⚠️ Ghi đè toàn bộ dữ liệu hiện tại.</div>
+        <div style={{ fontSize: 12, color: C.sub, marginBottom: 6 }}>Cách 1 — dán nội dung bản sao lưu JSON vào đây:</div>
+        <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder='Dán nội dung JSON đã sao lưu...' style={{ width: "100%", height: 90, fontSize: 11, fontFamily: "monospace", border: `1.5px solid ${C.line}`, borderRadius: 10, padding: 8, resize: "vertical", marginBottom: 8 }} />
+        <button onClick={() => restore(pasteText)} disabled={busy || !pasteText.trim()} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: pasteText.trim() ? C.coral : C.graySoft, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: pasteText.trim() ? "pointer" : "default" }}>♻️ Phục hồi từ nội dung dán</button>
+        <div style={{ fontSize: 12, color: C.sub, margin: "12px 0 6px" }}>Cách 2 — chọn file .json (chỉ chạy khi mở app thật):</div>
+        <label style={{ display: "inline-block", padding: "10px 16px", borderRadius: 10, border: `1.5px dashed ${C.line}`, fontSize: 13.5, color: C.sub, cursor: "pointer" }}>Chọn file .json<input type="file" accept=".json,application/json" onChange={importFile} disabled={busy} style={{ display: "none" }} /></label>
+      </Card>
+    </>
+  );
+}
+
 
 export default function App() {
   const now = new Date();
@@ -593,16 +805,83 @@ export default function App() {
         )}
 
         {tab === "thu" && mData && (
-          <ThuPhiTab {...{ rows, tk, allRows, chipsLop, lopFilter, setLopFilter, thuFilter, setThuFilter, search, setSearch, openId, setOpenId, getLop, setRec, setKhoan, resetKhoan, resetAllKhoan, setNgayAnAll, thuDuNhieu, addPhuThuHS, delPhuThuHS, locked, mData, upMData, setPhieuId, setTab, isWide }} />
+          <ThuPhiTab
+            rows={rows}
+            tk={tk}
+            allRows={allRows}
+            chipsLop={chipsLop}
+            lopFilter={lopFilter}
+            setLopFilter={setLopFilter}
+            thuFilter={thuFilter}
+            setThuFilter={setThuFilter}
+            search={search}
+            setSearch={setSearch}
+            openId={openId}
+            setOpenId={setOpenId}
+            getLop={getLop}
+            setRec={setRec}
+            setKhoan={setKhoan}
+            resetKhoan={resetKhoan}
+            resetAllKhoan={resetAllKhoan}
+            setNgayAnAll={setNgayAnAll}
+            thuDuNhieu={thuDuNhieu}
+            addPhuThuHS={addPhuThuHS}
+            delPhuThuHS={delPhuThuHS}
+            locked={locked}
+            mData={mData}
+            upMData={upMData}
+            setPhieuId={setPhieuId}
+            setTab={setTab}
+            isWide={isWide}
+          />
         )}
         {tab === "dd" && (
-          <DiemDanhTab {...{ allRows: ddRows, chipsLop, lopFilter, setLopFilter, search, setSearch, ddData, upDDData, leData, upLeData, year, month, locked: nextChot, ddLockReason: nextChot, isWide, ym, isGV, gvLopId, gvTen, students }} />
+          <DiemDanhTab
+            students={students}
+            classes={meta.classes.map((c) => ({ id: c.id, ten: c.ten }))}
+            ddData={ddData}
+            upDDData={upDDData}
+            leData={leData}
+            upLeData={upLeData}
+            year={year}
+            month={month}
+            locked={nextChot}
+            isWide={isWide}
+            isGV={isGV}
+            gvLopId={gvLopId}
+            gvTen={gvTen}
+            ym={ym}
+          />
         )}
         {tab === "phieu" && mData && phieuRow && (
-          <PhieuThu {...{ phieuRow, allRows, setPhieuId, getLop, meta, month, year, upMeta, mData, upMData }} />
+          <PhieuThu
+            phieuRow={phieuRow}
+            allRows={allRows}
+            setPhieuId={setPhieuId}
+            meta={meta}
+            month={month}
+            year={year}
+            upMeta={upMeta}
+            mData={mData}
+            upMData={upMData}
+          />
         )}
         {tab === "dash" && mData && (
-          <DashTab {...{ tk, mData, upMData, month, year, locked, meta, allRows, delThang, students, ym, upMeta, setTab }} />
+          <DashTab
+            tk={tk}
+            mData={mData}
+            upMData={upMData}
+            month={month}
+            year={year}
+            locked={locked}
+            meta={meta}
+            allRows={allRows}
+            delThang={delThang}
+            students={students}
+            ym={ym}
+            upMeta={upMeta}
+            setTab={setTab}
+          />
         )}
         {tab === "no" && (
           <CongNoTab {...{ students, meta, ym, mData }} />
@@ -649,278 +928,6 @@ export default function App() {
 
 // ====================================================================
 // Khoan thu rieng cua 1 HS trong thang (dau nam, dong phuc le...)
-function PhuThuHS({ r, locked, addPhuThuHS, delPhuThuHS }) {
-  const [ten, setTen] = useState(""); const [so, setSo] = useState("");
-  const [confirmId, setConfirmId] = useState(null);
-  const list = r.rec.phuThu || [];
-  const add = () => { if (!ten.trim() || !so) return; addPhuThuHS(r.hs.id, ten.trim(), Number(so)); setTen(""); setSo(""); };
-  return (
-    <div style={{ marginBottom: 10, borderTop: `1px solid ${C.line}`, paddingTop: 8 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, marginBottom: 4 }}>Khoản riêng (đầu năm, đồng phục…)</div>
-      {list.map((p) => (
-        <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 13 }}>
-          <span style={{ flex: 1, color: C.ink }}>{p.ten}{p.lop && <span style={{ color: C.blueA, fontSize: 10.5 }}> (cả lớp)</span>}</span>
-          <span style={{ fontWeight: 600 }}>{fmt(p.soTien)}</span>
-          {!locked && (confirmId === p.id
-            ? <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><button onClick={() => { delPhuThuHS(r.hs.id, p.id); setConfirmId(null); }} style={{ border: "none", background: C.coral, color: "#fff", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Xóa</button><button onClick={() => setConfirmId(null)} style={{ border: "none", background: "none", color: C.sub, fontSize: 11, cursor: "pointer" }}>Hủy</button></span>
-            : <button onClick={() => setConfirmId(p.id)} style={{ border: "none", background: "none", color: C.coral, cursor: "pointer", fontSize: 14 }}>🗑</button>)}
-        </div>
-      ))}
-      {!locked && (
-        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-          <input value={ten} onChange={(e) => setTen(e.target.value)} placeholder="Tên khoản (VD: Đầu năm)" style={{ flex: "2 1 130px", padding: "7px 9px", borderRadius: 8, border: `1.5px solid ${C.line}`, fontSize: 12.5, minWidth: 0, fontFamily: font.body }} />
-          <input type="number" value={so} onChange={(e) => setSo(e.target.value)} placeholder="Số tiền" style={{ flex: "1 1 80px", padding: "7px 9px", borderRadius: 8, border: `1.5px solid ${C.line}`, fontSize: 12.5, minWidth: 0, fontFamily: font.body }} />
-          <button onClick={add} style={{ background: C.pineSoft, color: C.pine, fontWeight: 700, fontSize: 12.5, padding: "7px 12px", borderRadius: 8, border: "none", cursor: "pointer" }}>+ Thêm</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// [UX-M] Empty state
-function EmptyState({ search, onClear }) {
-  return (
-    <div style={{ textAlign: "center", padding: "36px 20px", color: C.sub }}>
-      <div style={{ fontSize: 40, marginBottom: 8 }}>🔍</div>
-      <div style={{ fontSize: 14, marginBottom: 12 }}>{search ? "Không tìm thấy học sinh phù hợp" : "Không có học sinh trong bộ lọc này"}</div>
-      <button onClick={onClear} style={{ padding: "8px 16px", borderRadius: 9, border: `1.5px solid ${C.line}`, background: C.card, color: C.pine, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: font.body }}>Xóa bộ lọc</button>
-    </div>
-  );
-}
-
-// Thanh "ngay an ca thang"
-function NgayAnBar({ onApply, rows }) {
-  const [v, setV] = useState(24);
-  return (
-    <Card style={{ marginBottom: 10, background: C.pineSoft, borderColor: "#BFE0D4", padding: "10px 12px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: C.pine }}>🍽️ Số ngày ăn trong tháng:</span>
-        <NumInput value={v} onChange={setV} w={62} />
-        <span style={{ fontSize: 12.5, color: C.pine }}>ngày</span>
-        <button onClick={() => onApply(v, rows.map((r) => r.hs.id))} style={{ background: C.pine, color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "8px 14px", borderRadius: 9, border: "none", cursor: "pointer" }}>Áp dụng cho {rows.length} HS đang hiển thị</button>
-      </div>
-      <div style={{ fontSize: 11, color: C.sub, marginTop: 6 }}>Tiền ăn = số ngày ăn × đơn giá. Chỉ áp cho HS đang lọc; HS đã sửa tay vẫn giữ riêng.</div>
-    </Card>
-  );
-}
-
-// ====== Chi tiết HS trong Thu phí (UI/UX tối ưu mobile) ======
-function HSCardDetail({ r, locked, setRec, setKhoan, resetKhoan, resetAllKhoan, addPhuThuHS, delPhuThuHS, setPhieuId, setTab }) {
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetKhoan, setSheetKhoan] = useState(null);
-  const [sheetVal, setSheetVal] = useState("");
-  const [sheetLabel, setSheetLabel] = useState("");
-  const [ptTen, setPtTen] = useState("");
-  const [ptSo, setPtSo] = useState("");
-  const [showPtInput, setShowPtInput] = useState(false);
-  const [showChiTiet, setShowChiTiet] = useState(false);
-
-  const openSheet = (k, label) => {
-    setSheetKhoan(k);
-    setSheetLabel(label || (k ? k.label : ""));
-    setSheetVal(String(k ? (r.rec.khoan?.[k.key] ?? 0) : (r.rec.ngayAn || 0)));
-    setSheetOpen(true);
-  };
-
-  const saveSheet = () => {
-    if (sheetKhoan) {
-      setKhoan(r.hs.id, sheetKhoan.key, Number(sheetVal) || 0);
-    } else {
-      setRec(r.hs.id, { ngayAn: Number(sheetVal) || 0, ngayAnManual: true });
-    }
-    setSheetOpen(false);
-  };
-
-  const addPT = () => {
-    if (!ptTen.trim() || !ptSo) return;
-    addPhuThuHS(r.hs.id, ptTen.trim(), Number(ptSo));
-    setPtTen(""); setPtSo(""); setShowPtInput(false);
-  };
-
-  const tienAn = r.rec.khoan?.tienAn ?? 0;
-  const giaAn = r.rec.ngayAn > 0 ? Math.round(tienAn / r.rec.ngayAn) : (r.lop?.tienAn || 0);
-
-  return (
-    <div className="fade-in" style={{ borderTop: `1px dashed ${C.line}`, background: "#FBFDFB", animation: "fadeIn .2s ease" }}>
-      {/* Thực thu + Thu đủ cùng hàng */}
-      <div style={{ padding: "14px 14px 10px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: C.ink, whiteSpace: "nowrap" }}>Thực thu:</span>
-          <NumInput value={r.rec.thucThu} onChange={(v) => setRec(r.hs.id, { thucThu: v })} w={140} disabled={locked} />
-          {!locked && (r.rec.thucThu || 0) < r.tongPhaiThu && (
-            <button onClick={() => setRec(r.hs.id, { thucThu: r.tongPhaiThu })} style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: C.green, color: "#fff", fontFamily: font.display, fontWeight: 700, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }}>
-              ✓ Thu đủ
-            </button>
-          )}
-          {!locked && (r.rec.thucThu || 0) >= r.tongPhaiThu && r.tongPhaiThu > 0 && (
-            <span style={{ padding: "10px 14px", borderRadius: 10, background: C.greenSoft, color: C.green, fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>✓ Đã thu đủ</span>
-          )}
-        </div>
-      </div>
-
-      {/* BODY */}
-      <div style={{ padding: "0 14px 14px" }}>
-        {/* Ngày ăn — số trái, nhãn phải, click để sửa */}
-        <div onClick={() => !locked && openSheet(null, "Ngày ăn")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.line}`, cursor: locked ? "default" : "pointer" }}>
-          <div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 20, color: C.ink, minWidth: 36, textAlign: "center" }}>{r.rec.ngayAn}</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>Ngày ăn</div>
-            <div style={{ fontSize: 12, color: C.sub }}>{fmt(tienAn)} đ{r.rec.ngayAnManual && <span style={{ color: C.amber, marginLeft: 4 }}>· tay</span>}</div>
-          </div>
-          {!locked && <span style={{ fontSize: 16, color: C.sub }}>✏️</span>}
-        </div>
-
-        {/* Khoản phí — icon bút cạnh tên, click mở sheet */}
-        {r.hs.pl !== "GV" && r.hs.pl !== "T7" && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.sub }}>Khoản phí</div>
-              {!locked && r.ps.suaCount > 0 && (
-                <button onClick={() => resetAllKhoan(r.hs.id)} style={{ fontSize: 11, color: C.pine, border: "none", background: "none", cursor: "pointer", fontWeight: 600 }}>↺ Khôi phục</button>
-              )}
-            </div>
-            {KHOAN.filter((k) => k.key !== "tienAn").map((k) => {
-              const val = r.rec.khoan?.[k.key] ?? 0;
-              const def = r.rec.khoanDefault?.[k.key] ?? 0;
-              const sua = val !== def;
-              if (val === 0 && def === 0 && k.key !== "hocPhi") return null;
-              return (
-                <div key={k.key} onClick={() => !locked && openSheet(k)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.line}`, cursor: locked ? "default" : "pointer" }}>
-                  <span style={{ flex: 1, fontSize: 14, color: sua ? C.amber : C.ink }}>{k.label}{sua && <span style={{ fontSize: 11, color: C.amber, marginLeft: 4 }}>· đã sửa</span>}</span>
-                  <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 15, color: C.ink }}>{fmt(val)}</span>
-                  {!locked && <span style={{ fontSize: 14, color: C.sub }}>✏️</span>}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Khoản riêng (phuThu) */}
-        <div style={{ marginTop: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.sub, whiteSpace: "nowrap" }}>Khoản riêng</span>
-            <div style={{ flex: 1, height: 1, background: C.line }} />
-            {!locked && !showPtInput && (
-              <button onClick={() => setShowPtInput(true)} style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 9, border: `1.5px solid ${C.pine}`, background: C.pineSoft, color: C.pine, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>➕ Thêm</button>
-            )}
-          </div>
-          {(r.rec.phuThu || []).map((p) => (
-            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
-              <span style={{ flex: 1, fontSize: 14, color: C.ink }}>{p.ten}{p.lop && <span style={{ color: C.blueA, fontSize: 10 }}> (cả lớp)</span>}</span>
-              <span style={{ fontWeight: 700 }}>{fmt(p.soTien)}</span>
-              {!locked && (
-                <button onClick={(e) => { e.stopPropagation(); delPhuThuHS(r.hs.id, p.id); }} style={{ border: "none", background: "none", color: C.coral, cursor: "pointer", fontSize: 14 }}>🗑</button>
-              )}
-            </div>
-          ))}
-          {(r.rec.phuThu || []).length === 0 && !showPtInput && <div style={{ fontSize: 12, color: C.gray, padding: "2px 0 4px" }}>Chưa có khoản riêng.</div>}
-          {!locked && showPtInput && (
-            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-              <input value={ptTen} onChange={(e) => setPtTen(e.target.value)} placeholder="Tên khoản" style={{ flex: 2, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${C.line}`, fontSize: 13, fontFamily: font.body }} />
-              <input type="number" value={ptSo} onChange={(e) => setPtSo(e.target.value)} placeholder="Số tiền" style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${C.line}`, fontSize: 13, fontFamily: font.body }} />
-              <button onClick={addPT} style={{ background: C.pine, color: "#fff", fontWeight: 700, fontSize: 12, padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer" }}>Thêm</button>
-              <button onClick={() => { setShowPtInput(false); setPtTen(""); setPtSo(""); }} style={{ background: "none", color: C.sub, fontWeight: 700, fontSize: 12, padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${C.line}`, cursor: "pointer" }}>Hủy</button>
-            </div>
-          )}
-        </div>
-
-        {/* Chi tiết — nhấn vào mở ra hiện tất cả khoản */}
-        <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: C.card, border: `1px solid ${C.line}` }}>
-          <div onClick={() => setShowChiTiet((v) => !v)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.sub }}>Chi tiết</div>
-            <span style={{ fontSize: 12, color: C.sub, transition: "transform .2s", transform: showChiTiet ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
-          </div>
-
-          {showChiTiet && (
-            <div style={{ marginTop: 8 }}>
-              {r.ps.dong.map(([l, v, sua], i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 13, color: v < 0 ? C.green : C.ink }}>
-                  <span style={{ color: C.sub }}>{l}{sua && <span style={{ color: C.amber }}> ⚠</span>}</span>
-                  <span>{fmt(v)}</span>
-                </div>
-              ))}
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, color: C.sub, marginTop: 4, borderTop: `1px dashed ${C.line}` }}>
-                <span>Phát sinh tháng này</span><span>{fmt(r.ps.tong)}</span>
-              </div>
-              {r.noTruoc !== 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 13, color: r.noTruoc > 0 ? C.coral : C.green }}>
-                  <span>{r.noTruoc > 0 ? "+ Nợ tháng trước" : "− Dư tháng trước"}</span>
-                  <span>{r.noTruoc > 0 ? fmt(r.noTruoc) : "−" + fmt(-r.noTruoc)}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!showChiTiet && (
-            <div style={{ marginTop: 4 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, color: C.sub }}>
-                <span>Phát sinh tháng này</span><span>{fmt(r.ps.tong)}</span>
-              </div>
-              {r.noTruoc !== 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 13, color: r.noTruoc > 0 ? C.coral : C.green }}>
-                  <span>{r.noTruoc > 0 ? "+ Nợ tháng trước" : "− Dư tháng trước"}</span>
-                  <span>{r.noTruoc > 0 ? fmt(r.noTruoc) : "−" + fmt(-r.noTruoc)}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tổng phải thu */}
-          <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, marginTop: 6, borderTop: `1.5px solid ${C.line}`, fontWeight: 800, fontSize: 16, fontFamily: font.display }}>
-            <span>TỔNG PHẢI THU</span>
-            <span>{fmt(r.tongPhaiThu)} đ</span>
-          </div>
-        </div>
-      </div>
-
-      {/* FOOTER STICKY */}
-      <div style={{ position: "sticky", bottom: 0, background: "#fff", borderTop: `1.5px solid ${C.line}`, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, zIndex: 5 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, color: C.sub }}>Phát sinh {fmt(r.ps.tong)} · Nợ cũ {fmt(r.noTruoc)}</div>
-          <div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 16, color: C.ink }}>Tổng {fmt(r.tongPhaiThu)} đ</div>
-        </div>
-        <button onClick={() => { setPhieuId(r.hs.id); setTab("phieu"); }} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: C.pine, color: "#fff", fontFamily: font.display, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
-          Đến thu tiền →
-        </button>
-      </div>
-
-      {/* BOTTOM SHEET sửa khoản / ngày ăn */}
-      {sheetOpen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-          <div onClick={() => setSheetOpen(false)} style={{ flex: 1, background: "rgba(0,0,0,.4)" }} />
-          <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", padding: "20px 16px 24px", boxShadow: "0 -4px 20px rgba(0,0,0,.15)" }}>
-            <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 17, color: C.ink, marginBottom: 14 }}>
-              Sửa {sheetLabel}
-            </div>
-            {sheetKhoan && (
-              <div style={{ fontSize: 12, color: C.sub, marginBottom: 8 }}>Mặc định: {fmt(r.rec.khoanDefault?.[sheetKhoan.key] ?? 0)}</div>
-            )}
-            {!sheetKhoan && (
-              <div style={{ fontSize: 12, color: C.sub, marginBottom: 8 }}>Giá: {fmt(giaAn)} đ/ngày · Tự tính: {soNgayHoc(new Date().getFullYear(), new Date().getMonth()+1, {})} ngày</div>
-            )}
-            <input type="number" inputMode="numeric" autoFocus value={sheetVal} onChange={(e) => setSheetVal(e.target.value)} placeholder="0" style={{ width: "100%", padding: "14px 12px", borderRadius: 12, border: `1.5px solid ${C.pine}`, fontSize: 18, fontFamily: font.display, fontWeight: 700, color: C.ink, textAlign: "right", marginBottom: 14, outline: "none" }} />
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setSheetOpen(false)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: `1.5px solid ${C.line}`, background: C.card, color: C.sub, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Hủy</button>
-              <button onClick={saveSheet} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "none", background: C.pine, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Lưu</button>
-            </div>
-            {sheetKhoan && (
-              <button onClick={() => { resetKhoan(r.hs.id, sheetKhoan.key); setSheetOpen(false); }} style={{ width: "100%", marginTop: 10, padding: "10px 0", borderRadius: 10, border: "none", background: "none", color: C.pine, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-                ↺ Khôi phục mặc định
-              </button>
-            )}
-            {!sheetKhoan && (
-              <button onClick={() => { setRec(r.hs.id, { ngayAnManual: false }); setSheetOpen(false); }} style={{ width: "100%", marginTop: 10, padding: "10px 0", borderRadius: 10, border: "none", background: "none", color: C.pine, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-                ↺ Trả về tự tính
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ===== Bottom Sheet cơ sở =====
 function BottomSheet({ open, onClose, title, children }) {
   const sheetRef = useRef(null);
   const startYRef = useRef(null);
@@ -990,321 +997,6 @@ function BottomSheet({ open, onClose, title, children }) {
 }
 
 // ===== Sheet chọn lớp =====
-function LopFilterSheet({ open, onClose, chipsLop, lopFilter, setLopFilter, allRows }) {
-  const [q, setQ] = useState("");
-  const stats = useMemo(() => {
-    const s = {};
-    allRows.forEach((r) => {
-      if (!r.coRec) return;
-      const id = r.lopId || "none";
-      if (!s[id]) s[id] = { count: 0, no: 0 };
-      s[id].count++;
-      s[id].no += Math.max(0, r.conNo);
-    });
-    return s;
-  }, [allRows]);
-
-  const totalNo = allRows.reduce((a, r) => a + (r.coRec ? Math.max(0, r.conNo) : 0), 0);
-  const totalHS = allRows.filter((r) => r.coRec).length;
-
-  const filtered = chipsLop.filter(([id, ten]) => {
-    if (!q.trim()) return true;
-    return noDau(ten).includes(noDau(q));
-  });
-
-  return (
-    <BottomSheet open={open} onClose={onClose} title="Chọn lớp học">
-      <div>
-        {filtered.map(([id, ten]) => {
-          const active = lopFilter === id;
-          const count = id === "all" ? totalHS : (stats[id]?.count || 0);
-          const no = id === "all" ? totalNo : (stats[id]?.no || 0);
-          return (
-            <div
-              key={id}
-              onClick={() => { setLopFilter(id); onClose(); }}
-              style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 4px", borderBottom: `1px solid ${C.line}`, cursor: "pointer" }}
-            >
-              <div style={{ width: 22, height: 22, borderRadius: 99, border: `2px solid ${active ? C.pine : C.line}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "border-color .2s" }}>
-                {active && <div style={{ width: 12, height: 12, borderRadius: 99, background: C.pine }} />}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: active ? C.pine : C.ink, transition: "color .2s" }}>
-                  {id === "all" ? "Tất cả lớp" : ten}
-                </div>
-                <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>
-                  {count} học sinh · Nợ: {fmt(no)} đ
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {filtered.length === 0 && (
-          <div style={{ textAlign: "center", padding: 20, color: C.sub, fontSize: 13 }}>Không tìm thấy lớp</div>
-        )}
-      </div>
-    </BottomSheet>
-  );
-}
-
-function ThuPhiTab({ rows, tk, allRows, chipsLop, lopFilter, setLopFilter, thuFilter, setThuFilter, search, setSearch, openId, setOpenId, getLop, setRec, setKhoan, resetKhoan, resetAllKhoan, setNgayAnAll, thuDuNhieu, addPhuThuHS, delPhuThuHS, locked, mData, upMData, setPhieuId, setTab, isWide }) {
-  const [fastMode, setFastMode] = useState(false);
-  const [lopSheetOpen, setLopSheetOpen] = useState(false);
-  const [thuSheetOpen, setThuSheetOpen] = useState(false);
-  const [batchOpen, setBatchOpen] = useState(false);
-  const [cfgOpen, setCfgOpen] = useState(false);
-  const [showNgayAn, setShowNgayAn] = useState(false);
-  const [thuLimit, setThuLimit] = useState(50);
-  const inputRefs = useRef({});
-  const { sentinelRef, shrunk } = useStickyShrink();
-  // [UX-I] dem trang thai
-  const cnt = { chuaThu: 0, thieu: 0, xong: 0 };
-  rows.forEach((r) => {
-    if (r.ps.tong > 0 && (r.rec.thucThu || 0) === 0) cnt.chuaThu++;
-    else if (r.conNo > 0) cnt.thieu++;
-    else if ((r.rec.thucThu || 0) > 0 && r.conNo <= 0) cnt.xong++;
-  });
-  const batchThuDu = async (onlyNo) => {
-    const pairs = rows.filter((r) => !onlyNo || r.conNo > 0).map((r) => ({ sid: r.hs.id, thucThu: r.tongPhaiThu }));
-    if (pairs.length === 0) return;
-    if (!(await ask(`Đánh "thu đủ" cho ${pairs.length} HS đang hiển thị?\nThao tác này ghi đè số đã thu của từng em.`, { okText: "Thu đủ" }))) return;
-    thuDuNhieu(pairs);
-    toast(onlyNo ? `Đã thu đủ ${pairs.length} HS còn nợ.` : `Đã thu đủ ${pairs.length} HS đang hiển thị.`);
-  };
-  const cfgItem = { width: "100%", textAlign: "left", padding: "11px 12px", borderRadius: 9, border: "none", background: "none", color: C.ink, fontWeight: 700, fontSize: 13.5, fontFamily: font.body, cursor: "pointer" };
-  const selStyle = { padding: "9px 10px", borderRadius: 9, border: `1.5px solid ${C.line}`, fontSize: 13, fontFamily: font.body, color: C.ink, background: C.card, minWidth: 0, cursor: "pointer" };
-  return (
-    <>
-      {/* [Tong gop] Thẻ tổng toàn trường: Phải thu + % đã thu + Còn nợ + số HS chưa thu */}
-      {(() => {
-        const pct = tk.ps > 0 ? Math.min(100, Math.round(tk.thu / tk.ps * 100)) : 0;
-        const soChuaThu = (tk.noList || []).filter((x) => x.chua).length;
-        return (
-          <Card style={{ marginBottom: 12, padding: "12px 14px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontSize: 12, color: C.sub }}>Phải thu (toàn trường)</span>
-              <span style={{ fontFamily: font.display, fontWeight: 800, fontSize: 20, color: C.ink }}>{fmt(tk.ps)} đ</span>
-            </div>
-            <div style={{ height: 9, borderRadius: 99, background: C.line, overflow: "hidden", margin: "9px 0 5px" }}>
-              <div style={{ width: pct + "%", height: "100%", background: pct >= 100 ? C.green : C.pine, borderRadius: 99, transition: "width .3s" }} />
-            </div>
-            <div style={{ fontSize: 12.5, color: C.green, fontWeight: 700 }}>Đã thu {pct}% · {fmt(tk.thu)} đ</div>
-            <div style={{ display: "flex", gap: 16, marginTop: 9, paddingTop: 9, borderTop: `1px solid ${C.line}`, fontSize: 12.5 }}>
-              <span style={{ color: tk.no > 0 ? C.coral : C.green, fontWeight: 700 }}>● Còn nợ: {fmt(tk.no)} đ</span>
-              <button onClick={() => setThuFilter(thuFilter === "chuaThu" ? "all" : "chuaThu")} style={{ border: "none", background: "none", color: thuFilter === "chuaThu" ? C.pine : C.coral, fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, textDecoration: thuFilter === "chuaThu" ? "underline" : "none" }}>● {soChuaThu} chưa thu</button>
-            </div>
-          </Card>
-        );
-      })()}
-      <div ref={sentinelRef} style={{ height: 1 }} />
-      <StickyBar shrunk={shrunk}>
-      <SearchBar value={search} onChange={setSearch} />
-      {/* Lọc gọn: Lớp + Tình trạng thu */}
-      {isWide ? (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-          <select value={lopFilter} onChange={(e) => setLopFilter(e.target.value)} style={{ ...selStyle, flex: "1 1 110px" }}>
-            {chipsLop.map(([id, ten]) => <option key={id} value={id}>{id === "all" ? "Tất cả lớp" : ten}</option>)}
-          </select>
-          <select value={thuFilter} onChange={(e) => setThuFilter(e.target.value)} style={{ ...selStyle, flex: "1 1 110px" }}>
-            {[["all", "Mọi tình trạng"], ["chuaThu", "Chưa thu"], ["thieu", "Thiếu"], ["noCu", "Nợ cũ"], ["thuThua", "Thu thừa"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          {!locked && !fastMode && (
-            <button onClick={() => setCfgOpen((v) => !v)} style={{ flexShrink: 0, padding: "9px 14px", borderRadius: 9, border: `1.5px solid ${C.pine}`, cursor: "pointer", fontWeight: 700, fontSize: 12.5, fontFamily: font.body, background: cfgOpen ? C.pine : C.pineSoft, color: cfgOpen ? "#fff" : C.pine }}>⚙️ Cấu hình</button>
-          )}
-        </div>
-      ) : (
-        <>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-            <button onClick={() => setLopSheetOpen(true)} style={{ ...selStyle, flex: "1 1 110px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {lopFilter === "all" ? "Tất cả lớp" : getLop(lopFilter)?.ten}
-              </span>
-              <span style={{ fontSize: 10, color: C.sub, marginLeft: 6 }}>▼</span>
-            </button>
-            <button onClick={() => setThuSheetOpen(true)} style={{ ...selStyle, flex: "1 1 110px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {thuFilter === "all" ? "Mọi tình trạng" : thuFilter === "chuaThu" ? "Chưa thu" : thuFilter === "thieu" ? "Thiếu" : thuFilter === "noCu" ? "Nợ cũ" : thuFilter === "thuThua" ? "Thu thừa" : "Mọi tình trạng"}
-              </span>
-              <span style={{ fontSize: 10, color: C.sub, marginLeft: 6 }}>▼</span>
-            </button>
-            {!locked && !fastMode && (
-              <button onClick={() => setCfgOpen((v) => !v)} style={{ flexShrink: 0, padding: "9px 14px", borderRadius: 9, border: `1.5px solid ${C.pine}`, cursor: "pointer", fontWeight: 700, fontSize: 12.5, fontFamily: font.body, background: cfgOpen ? C.pine : C.pineSoft, color: cfgOpen ? "#fff" : C.pine }}>⚙️ Cấu hình</button>
-            )}
-          </div>
-          <LopFilterSheet
-            open={lopSheetOpen}
-            onClose={() => setLopSheetOpen(false)}
-            chipsLop={chipsLop}
-            lopFilter={lopFilter}
-            setLopFilter={setLopFilter}
-            allRows={allRows}
-          />
-          <BottomSheet open={thuSheetOpen} onClose={() => setThuSheetOpen(false)} title="Tình trạng thu">
-            {[["all", "Mọi tình trạng"], ["chuaThu", "Chưa thu"], ["thieu", "Thiếu"], ["noCu", "Nợ cũ"], ["thuThua", "Thu thừa"]].map(([v, l]) => {
-              const active = thuFilter === v;
-              return (
-                <div key={v} onClick={() => { setThuFilter(v); setThuSheetOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 4px", borderBottom: `1px solid ${C.line}`, cursor: "pointer" }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 99, border: `2px solid ${active ? C.pine : C.line}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {active && <div style={{ width: 12, height: 12, borderRadius: 99, background: C.pine }} />}
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: active ? C.pine : C.ink }}>{l}</div>
-                </div>
-              );
-            })}
-          </BottomSheet>
-        </>
-      )}
-      </StickyBar>
-      {/* [Cấu hình] gom thao tác hàng loạt vào 1 menu */}
-      {!locked && fastMode && (
-        <button onClick={() => { setFastMode(false); }} style={{ width: "100%", marginBottom: 10, padding: "11px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, fontFamily: font.body, background: C.pine, color: "#fff" }}>⛔ Tắt chế độ Tích thu nhanh</button>
-      )}
-      {!locked && !fastMode && cfgOpen && (
-        <Card style={{ marginBottom: 10, padding: 6 }}>
-          <button onClick={() => setShowNgayAn((v) => !v)} style={{ ...cfgItem, color: showNgayAn ? C.pine : C.ink }}>🍽️ Áp ngày ăn hàng loạt {showNgayAn ? "▲" : "▼"}</button>
-          {showNgayAn && <div style={{ padding: "2px 2px 6px" }}><NgayAnBar onApply={setNgayAnAll} rows={rows} /></div>}
-          <button onClick={() => { setFastMode(true); setCfgOpen(false); }} style={cfgItem}>⚡ Bật chế độ Tích thu nhanh</button>
-          {(() => { const soNo = rows.filter((r) => r.conNo > 0).length; return (
-            <button onClick={() => { if (soNo > 0) { batchThuDu(true); setCfgOpen(false); } }} disabled={soNo === 0} style={{ ...cfgItem, color: soNo > 0 ? C.green : C.gray, cursor: soNo > 0 ? "pointer" : "default" }}>💵 Thu đủ {soNo} HS còn nợ đang hiển thị</button>
-          ); })()}
-        </Card>
-      )}
-      {locked && <LockNote />}
-      {rows.length === 0 && <EmptyState search={search} onClear={() => { setSearch(""); setLopFilter("all"); setThuFilter("all"); }} />}
-      {rows.slice(0, thuLimit).map((r) => {
-        const open = openId === r.hs.id;
-        if (fastMode) {
-          const idx = rows.findIndex((x) => x.hs.id === r.hs.id);
-          return (
-            <div key={r.hs.id} style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.line}`, marginBottom: 8, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.hs.ten}</div>
-                <div style={{ fontSize: 11.5, color: C.sub }}>cần {fmt(r.tongPhaiThu)}{r.noTruoc > 0 ? ` · 🔴 nợ ${fmt(r.noTruoc)}` : ""}</div>
-              </div>
-              <input ref={(el) => (inputRefs.current[r.hs.id] = el)} type="text" inputMode="numeric"
-                defaultValue={r.rec.thucThu ? Number(r.rec.thucThu).toLocaleString("vi-VN") : ""}
-                onFocus={(e) => { e.target.value = r.rec.thucThu ? String(r.rec.thucThu) : ""; e.target.select(); }}
-                onBlur={(e) => { const d = e.target.value.replace(/[^\d]/g, ""); setRec(r.hs.id, { thucThu: d === "" ? 0 : Number(d) }); e.target.value = d ? Number(d).toLocaleString("vi-VN") : ""; }}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.target.blur(); const next = rows[idx + 1]; if (next) setTimeout(() => inputRefs.current[next.hs.id]?.focus(), 30); } }}
-                placeholder="0" style={{ width: 110, padding: "9px 8px", borderRadius: 8, border: `1.5px solid ${C.line}`, fontFamily: font.body, fontSize: 14, color: C.ink, background: "#FAFCFA", textAlign: "right", outline: "none" }} />
-              <button onClick={() => { setRec(r.hs.id, { thucThu: r.tongPhaiThu }); if (inputRefs.current[r.hs.id]) inputRefs.current[r.hs.id].value = Number(r.tongPhaiThu).toLocaleString("vi-VN"); }} style={{ background: C.green, color: "#fff", border: "none", borderRadius: 8, width: 40, height: 40, fontSize: 16, cursor: "pointer", flexShrink: 0 }}>✓</button>
-            </div>
-          );
-        }
-        return (
-          <div key={r.hs.id} style={{ background: C.card, borderRadius: 16, border: `1px solid ${open ? C.pine : C.line}`, marginBottom: 10, overflow: "hidden" }}>
-            <div onClick={() => setOpenId(open ? null : r.hs.id)} style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-              <div style={{ position: "relative", flexShrink: 0 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: r.hs.nguoiThu === "B" ? C.violetBSoft : C.blueASoft, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: font.display, fontWeight: 700, fontSize: 13, color: r.hs.nguoiThu === "B" ? C.violetB : C.blueA }}>{r.hs.nguoiThu}</div>
-                {r.noTruoc > 0 && <div title="có nợ tháng trước" style={{ position: "absolute", top: -3, right: -3, width: 11, height: 11, borderRadius: 99, background: C.coral, border: "2px solid #fff" }} />}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: C.ink }}>{r.hs.ten}{r.ps.suaCount > 0 && <span title="có khoản đã sửa" style={{ color: C.amber, fontSize: 12 }}> ⚠</span>}</div>
-                <div style={{ fontSize: 11.5, color: C.sub, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 1 }}><span>{r.lop?.ten}</span><PLBadge pl={r.hs.pl} />{r.nghi > 0 ? <span>· nghỉ {r.nghi}</span> : null}</div>
-                {r.noTruoc !== 0 && <div style={{ fontSize: 11, fontWeight: 700, marginTop: 1, color: r.noTruoc > 0 ? C.coral : C.green }}>{r.noTruoc > 0 ? `🔴 Nợ cũ ${fmt(r.noTruoc)}` : `🟢 Dư cũ ${fmt(-r.noTruoc)}`}</div>}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ textAlign: "right" }}><div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 16, color: C.ink }}>{fmt(r.tongPhaiThu)}</div><Badge s={r.st} /></div>
-                <button onClick={(e) => { e.stopPropagation(); setPhieuId(r.hs.id); setTab("phieu"); }} title="Xem phiếu thu" style={{ border: "none", background: "none", fontSize: 18, cursor: "pointer", padding: 2 }}>🧾</button>
-              </div>
-            </div>
-            {open && (
-              <HSCardDetail
-                r={r}
-                locked={locked}
-                setRec={setRec}
-                setKhoan={setKhoan}
-                resetKhoan={resetKhoan}
-                resetAllKhoan={resetAllKhoan}
-                addPhuThuHS={addPhuThuHS}
-                delPhuThuHS={delPhuThuHS}
-                setPhieuId={setPhieuId}
-                setTab={setTab}
-              />
-            )}
-          </div>
-        );
-      })}
-      {rows.length > thuLimit && (
-        <button onClick={() => setThuLimit((l) => l + 50)} style={{ width: "100%", padding: "11px 0", borderRadius: 12, border: `1.5px solid ${C.pine}`, background: C.pineSoft, color: C.pine, fontWeight: 700, fontSize: 14, cursor: "pointer", marginBottom: 10 }}>Hiện thêm 50 HS ({Math.min(thuLimit, rows.length)}/{rows.length})</button>
-      )}
-      <ThuNgoai mData={mData} upMData={upMData} locked={locked} />
-      <KhoanThuLop mData={mData} upMData={upMData} locked={locked} classes={chipsLop.slice(1).map(([id, ten]) => ({ id, ten }))} rows={rows} lopFilter={lopFilter} />
-    </>
-  );
-}
-
-function ThuNgoai({ mData, upMData, locked }) {
-  const tn = mData.thuNgoai || [];
-  const [ten, setTen] = useState(""); const [so, setSo] = useState("");
-  const add = () => { if (!ten.trim()) return; upMData({ ...mData, thuNgoai: [...tn, { id: uid(), ten: ten.trim(), soTien: Number(so) || 0, thucThu: 0, nguoiThu: "A" }] }); setTen(""); setSo(""); };
-  const set = (id, p) => upMData({ ...mData, thuNgoai: tn.map((k) => (k.id === id ? { ...k, ...p } : k)) });
-  const del = (id) => upMData({ ...mData, thuNgoai: tn.filter((k) => k.id !== id) });
-  return (
-    <Card style={{ marginTop: 4 }}>
-      <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 14.5, marginBottom: 8 }}>💧 Thu ngoài (KV4)</div>
-      {tn.map((k) => (
-        <div key={k.id} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: "8px 0", borderBottom: `1px solid ${C.line}` }}>
-          <div style={{ flex: "1 1 120px", fontSize: 13.5, fontWeight: 600, minWidth: 0 }}>{k.ten} <span style={{ color: C.sub, fontWeight: 400 }}>({fmt(k.soTien)})</span></div>
-          <NumInput value={k.thucThu} onChange={(v) => set(k.id, { thucThu: v })} w={100} disabled={locked} />
-          <ABBtn val={k.nguoiThu} set={(p) => set(k.id, { nguoiThu: p })} small disabled={locked} />
-          {!locked && <button onClick={() => del(k.id)} style={{ color: C.coral, border: "none", background: "none", cursor: "pointer", padding: 4 }}>🗑</button>}
-        </div>
-      ))}
-      {!locked && (
-        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-          <input value={ten} onChange={(e) => setTen(e.target.value)} placeholder="Tên khoản (VD: Quỹ CSVC)" style={{ flex: "2 1 140px", padding: "9px 10px", borderRadius: 9, border: `1.5px solid ${C.line}`, fontSize: 13, minWidth: 0, fontFamily: font.body }} />
-          <input type="number" value={so} onChange={(e) => setSo(e.target.value)} placeholder="Số tiền" style={{ flex: "1 1 90px", padding: "9px 10px", borderRadius: 9, border: `1.5px solid ${C.line}`, fontSize: 13, minWidth: 0, fontFamily: font.body }} />
-          <button onClick={add} style={{ background: C.pine, color: "#fff", fontWeight: 700, fontSize: 13, padding: "9px 14px", borderRadius: 9, border: "none", cursor: "pointer" }}>+ Thêm</button>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-// Khoan thu ap cho 1 LOP cu the -> them phuThu vao HS thuoc lop do trong thang
-function KhoanThuLop({ mData, upMData, locked, classes, rows, lopFilter }) {
-  if (locked) return null;
-  const [ten, setTen] = useState(""); const [so, setSo] = useState("");
-  const [coDinh, setCoDinh] = useState(false);
-  const [lopAp, setLopAp] = useState(lopFilter !== "all" ? lopFilter : (classes[0]?.id || ""));
-  const targets = rows.filter((r) => r.lopId === lopAp);
-  const apply = () => {
-    if (!ten.trim() || !so || !lopAp) return;
-    const ids = targets.map((r) => r.hs.id);
-    if (ids.length === 0) { toast("Lớp này chưa có HS trong tháng."); return; }
-    const fees = { ...mData.fees };
-    ids.forEach((sid) => {
-      const cur = fees[sid]; if (!cur) return;
-      fees[sid] = { ...cur, phuThu: [...(cur.phuThu || []), { id: uid(), ten: ten.trim() + (coDinh ? " (cố định)" : ""), soTien: Number(so), lop: lopAp, coDinh }] };
-    });
-    upMData({ ...mData, fees });
-    setTen(""); setSo("");
-    toast(`Đã thêm "${ten.trim()}" cho ${ids.length} HS lớp ${classes.find((c) => c.id === lopAp)?.ten}.`);
-  };
-  return (
-    <Card style={{ marginTop: 10, background: C.blueASoft, borderColor: "#C7DCF3" }}>
-      <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 14.5, marginBottom: 4, color: C.blueA }}>➕ Khoản thu áp cho cả lớp</div>
-      <div style={{ fontSize: 11.5, color: C.sub, marginBottom: 8 }}>Chọn lớp + nhập khoản → cộng vào mọi HS lớp đó tháng này. <b>Cố định</b> = khoản lặp hàng tháng; <b>không cố định</b> = chỉ tháng này. Sửa/xóa lẻ ở thẻ HS.</div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-        <select value={lopAp} onChange={(e) => setLopAp(e.target.value)} style={{ flex: "1 1 120px", padding: "9px 10px", borderRadius: 9, border: `1.5px solid #C7DCF3`, fontSize: 13, minWidth: 0, fontFamily: font.body, background: "#fff" }}>
-          {classes.map((c) => <option key={c.id} value={c.id}>{c.ten} ({rows.filter((r) => r.lopId === c.id).length} HS)</option>)}
-        </select>
-        <div style={{ display: "inline-flex", borderRadius: 9, overflow: "hidden", border: `1.5px solid #C7DCF3` }}>
-          <button onClick={() => setCoDinh(false)} style={{ padding: "8px 12px", fontWeight: 700, fontSize: 12, border: "none", cursor: "pointer", background: !coDinh ? C.blueA : "#fff", color: !coDinh ? "#fff" : C.sub, fontFamily: font.body }}>Không cố định</button>
-          <button onClick={() => setCoDinh(true)} style={{ padding: "8px 12px", fontWeight: 700, fontSize: 12, border: "none", cursor: "pointer", background: coDinh ? C.blueA : "#fff", color: coDinh ? "#fff" : C.sub, fontFamily: font.body }}>Cố định</button>
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <input value={ten} onChange={(e) => setTen(e.target.value)} placeholder="Tên khoản (VD: Dã ngoại / Đầu năm)" style={{ flex: "2 1 150px", padding: "9px 10px", borderRadius: 9, border: `1.5px solid #C7DCF3`, fontSize: 13, minWidth: 0, fontFamily: font.body }} />
-        <input type="number" value={so} onChange={(e) => setSo(e.target.value)} placeholder="Số tiền" style={{ flex: "1 1 90px", padding: "9px 10px", borderRadius: 9, border: `1.5px solid #C7DCF3`, fontSize: 13, minWidth: 0, fontFamily: font.body }} />
-        <button onClick={apply} style={{ background: C.blueA, color: "#fff", fontWeight: 700, fontSize: 13, padding: "9px 14px", borderRadius: 9, border: "none", cursor: "pointer" }}>Áp dụng</button>
-      </div>
-    </Card>
-  );
-}
-
-// ====================================================================
 function CongNoTab({ students, meta, ym, mData }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState([]);
@@ -1418,564 +1110,6 @@ function CongNoTab({ students, meta, ym, mData }) {
 // ====================================================================
 // [UX-Q] Ma BIN ngan hang cho VietQR
 const BANK_BIN = { "vietcombank": "970436", "vcb": "970436", "techcombank": "970407", "tcb": "970407", "bidv": "970418", "vietinbank": "970415", "ctg": "970415", "agribank": "970405", "mbbank": "970422", "mb": "970422", "acb": "970416", "vpbank": "970432", "vpb": "970432", "tpbank": "970423", "tpb": "970423", "sacombank": "970403", "stb": "970403", "hdbank": "970437", "vib": "970441", "shb": "970443", "ocb": "970448", "msb": "970426", "scb": "970429", "eximbank": "970431", "lienvietpostbank": "970449", "lpbank": "970449", "seabank": "970440", "bacabank": "970409", "vietabank": "970427", "namabank": "970428", "pgbank": "970430", "vietbank": "970433", "baovietbank": "970438", "kienlongbank": "970452", "abbank": "970425", "dongabank": "970406", "gpbank": "970408", "ncb": "970419", "saigonbank": "970400", "pvcombank": "970412" };
-function binOf(nh) { const k = noDau(nh || "").replace(/[^a-z]/g, ""); return BANK_BIN[k] || null; }
-function QRBox({ bank, amount, noiDung }) {
-  const bin = binOf(bank?.nh);
-  const [err, setErr] = useState(false);
-  if (!bin || !bank?.stk || err) {
-    return <div style={{ width: 88, height: 88, borderRadius: 8, background: "#fff", border: `1.5px solid ${C.pine}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: C.sub, textAlign: "center", flexShrink: 0, padding: 4 }}>{bin ? "QR" : "QR (ngân hàng chưa hỗ trợ)"}</div>;
-  }
-  const url = `https://img.vietqr.io/image/${bin}-${bank.stk}-compact.png?` + (amount > 0 ? `amount=${Math.round(amount)}&` : "") + `addInfo=${encodeURIComponent(noiDung || "")}`;
-  return <img src={url} alt="QR chuyển khoản" onError={() => setErr(true)} style={{ width: 88, height: 88, borderRadius: 8, background: "#fff", border: `1.5px solid ${C.pine}`, flexShrink: 0, objectFit: "contain" }} />;
-}
-
-function PhieuThu({ phieuRow, allRows, setPhieuId, getLop, meta, month, year, upMeta, mData, upMData }) {
-  const nguoiThu = phieuRow.hs.nguoiThu;
-  const bienLai = phieuRow.rec.bienLai || null; // da co so bien lai chua
-  const inPhieu = () => {
-    if (!bienLai) {
-      const next = (meta.soBienLai?.[nguoiThu] || 0) + 1;
-      const bl = `BL-${nguoiThu}-${String(next).padStart(4, "0")}`;
-      upMeta({ ...meta, soBienLai: { ...(meta.soBienLai || {}), [nguoiThu]: next } });
-      upMData({ ...mData, fees: { ...mData.fees, [phieuRow.hs.id]: { ...mData.fees[phieuRow.hs.id], bienLai: bl } } });
-      setTimeout(() => window.print(), 100);
-    } else {
-      window.print();
-    }
-  };
-  return (
-    <>
-      <select className="no-print" value={phieuRow.hs.id} onChange={(e) => setPhieuId(e.target.value)} style={{ width: "100%", padding: "11px 12px", borderRadius: 12, marginBottom: 14, border: `1.5px solid ${C.line}`, fontFamily: font.body, fontSize: 14, color: C.ink, background: C.card }}>
-        {allRows.filter((r) => r.coRec).map((r) => <option key={r.hs.id} value={r.hs.id}>{r.hs.ten} — {r.lop?.ten}</option>)}
-      </select>
-      <div id="phieu-in" style={{ background: "#FFFEF9", borderRadius: 4, padding: "0 0 18px", boxShadow: "0 4px 18px rgba(28,53,48,.12)" }}>
-        <div style={{ height: 10, background: `linear-gradient(45deg, transparent 33.33%, #FFFEF9 33.33%, #FFFEF9 66.66%, transparent 66.66%), linear-gradient(-45deg, transparent 33.33%, #FFFEF9 33.33%, #FFFEF9 66.66%, transparent 66.66%)`, backgroundColor: C.bg, backgroundSize: "14px 20px" }} />
-        <div style={{ padding: "14px 20px 0" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-            <div style={{ fontSize: 11, color: C.sub }}>{bienLai ? <b style={{ color: C.ink, fontSize: 12 }}>{bienLai}</b> : "Số: (cấp khi in)"}</div>
-            <div style={{ fontSize: 11, color: C.sub }}>Ngày: {new Date().toLocaleDateString("vi-VN")}</div>
-          </div>
-          <div style={{ textAlign: "center", marginBottom: 12 }}>
-            <div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 19, color: C.pine }}>PHIẾU THU HỌC PHÍ</div>
-            <div style={{ fontSize: 12.5, color: C.sub }}>Tháng {month}/{year} — {meta.tenTruong}</div>
-          </div>
-          <div style={{ fontSize: 13.5, marginBottom: 10 }}><b>{phieuRow.hs.ten}</b> · {phieuRow.lop?.ten} · Mã {phieuRow.hs.id.toUpperCase()}</div>
-          <div style={{ fontSize: 13.5 }}>
-            {phieuRow.ps.dong.map(([l, v], i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3.5px 0", borderBottom: `1px dotted ${C.line}` }}><span style={{ color: C.sub }}>{l}</span><span>{fmt(v)}</span></div>))}
-            {phieuRow.noTruoc !== 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "3.5px 0", borderBottom: `1px dotted ${C.line}`, color: phieuRow.noTruoc > 0 ? C.coral : C.green }}><span>{phieuRow.noTruoc > 0 ? "Nợ tháng trước" : "Dư tháng trước"}</span><span>{phieuRow.noTruoc > 0 ? fmt(phieuRow.noTruoc) : "−" + fmt(-phieuRow.noTruoc)}</span></div>}
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "9px 0 3px", fontFamily: font.display, fontWeight: 800, fontSize: 16 }}><span>TỔNG PHẢI THU</span><span>{fmt(phieuRow.tongPhaiThu)} đ</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span style={{ color: C.sub }}>Đã thu</span><span>{fmt(phieuRow.rec.thucThu)} đ</span></div>
-            {phieuRow.conNo !== 0 && <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: phieuRow.conNo > 0 ? C.coral : C.amber, fontWeight: 600 }}><span>{phieuRow.conNo > 0 ? "Còn nợ" : "Thu thừa"}</span><span>{fmt(Math.abs(phieuRow.conNo))} đ</span></div>}
-          </div>
-          <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: C.pineSoft, display: "flex", gap: 12, alignItems: "center" }}>
-            <QRBox bank={meta.bank[nguoiThu]} amount={Math.max(0, phieuRow.conNo)} noiDung={`Hoc phi ${phieuRow.hs.ten} T${month}`} />
-            <div style={{ fontSize: 12.5, lineHeight: 1.5 }}><b>Chuyển khoản cho {nguoiThu}</b><br />{meta.bank[nguoiThu].chu}<br />{meta.bank[nguoiThu].stk} · {meta.bank[nguoiThu].nh}</div>
-          </div>
-        </div>
-      </div>
-      <button className="no-print" onClick={inPhieu} style={{ marginTop: 14, width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: C.pine, color: "#fff", fontFamily: font.display, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>{bienLai ? "🖨 In / Lưu PDF" : "✓ Cấp số biên lai & In"}</button>
-    </>
-  );
-}
-
-// ====================================================================
-// [UX-R] Donut chart SVG
-function Donut({ pct, color, size = 76 }) {
-  const r = (size - 10) / 2, c = size / 2, circ = 2 * Math.PI * r;
-  const dash = circ * Math.min(100, pct) / 100;
-  return (
-    <svg width={size} height={size} style={{ flexShrink: 0 }}>
-      <circle cx={c} cy={c} r={r} fill="none" stroke={C.graySoft} strokeWidth={8} />
-      <circle cx={c} cy={c} r={r} fill="none" stroke={color} strokeWidth={8} strokeDasharray={`${dash} ${circ - dash}`} strokeLinecap="round" transform={`rotate(-90 ${c} ${c})`} />
-      <text x={c} y={c + 5} textAnchor="middle" fontSize={16} fontWeight={800} fill={C.ink} fontFamily={font.display}>{pct}%</text>
-    </svg>
-  );
-}
-
-function DashTab({ tk, mData, upMData, month, year, locked, meta, allRows, delThang, students, ym, upMeta, setTab }) {
-  // [COLLAPSE] Trang thai dong/mo cac khoi
-  const [openCards, setOpenCards] = useState(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("dashOpenCards") : null;
-    if (saved) { try { return JSON.parse(saved); } catch {} }
-    return { vanHanh: true, kd: true, tienMat: false, loiNhuan: false, lichSu: false, chiPhi: true };
-  });
-  const toggleCard = (key) => {
-    setOpenCards((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      localStorage.setItem("dashOpenCards", JSON.stringify(next));
-      return next;
-    });
-  };
-  // [DELETE PROTECT] Bao ve nut xoa bang thu
-  const [showDelConfirm, setShowDelConfirm] = useState(false);
-  const [delConfirmText, setDelConfirmText] = useState("");
-  // [TOP NO] Thu gon top HS no
-  const [topNoLimit, setTopNoLimit] = useState(3);
-  // [DU NO] Luy ke "dang giu" + lich su lai theo tung thang
-  const [luyKe, setLuyKe] = useState(null);
-  const [lichSu, setLichSu] = useState(null);
-  // [Dot1] 4 bottom sheet: canh bao / chi phi / loi nhuan / lich su
-  const [sheetCB, setSheetCB] = useState(false);
-  const [sheetCP, setSheetCP] = useState(false);
-  const [sheetLN, setSheetLN] = useState(false);
-  const [sheetLS, setSheetLS] = useState(false);
-  useEffect(() => {
-    let huy = false;
-    (async () => {
-      const dk = meta?.soDuDauKy || {};
-      let giuA = dk.tienMatA || 0, giuB = dk.tienMatB || 0;
-      let noNCC = 0; // luy ke no nha cung cap
-      const keys = (await sList("mn5:thang:")).filter((k) => /mn5:thang:\d{4}-\d{2}$/.test(k)).map((k) => k.replace("mn5:thang:", "")).filter((m) => m <= ym).sort();
-      const ls = [];
-      for (const m of keys) {
-        const td = await sGet(`mn5:thang:${m}`); if (!td) continue;
-        const my = Number(m.slice(0, 4)), mmo = Number(m.slice(5));
-        const pmo = mmo === 1 ? 12 : mmo - 1, pyy = mmo === 1 ? my - 1 : my;
-        const ddPrevM = (await sGet(`mn5:dd:${ymKey(pyy, pmo)}`)) || {};
-        let thuA = 0, thuB = 0, chiA = 0, chiB = 0, traA = 0, traB = 0, psA = 0, psB = 0;
-        let thangNoNCC = 0;
-        Object.entries(td.fees || {}).forEach(([sid, rec]) => {
-          const hs = students.find((s) => s.id === sid); if (!hs) return;
-          const tt = Number(rec.thucThu) || 0;
-          if (hs.nguoiThu === "A") thuA += tt; else if (hs.nguoiThu === "B") thuB += tt;
-          const lop = meta.classes.find((c) => c.id === lopOfMonth(hs, m));
-          const nghi = Object.keys(ddPrevM[sid] || {}).length;
-          const ps = tinhPSFromRec(hs, rec, lop, nghi).tong;
-          if (hs.nguoiThu === "A") psA += ps; else if (hs.nguoiThu === "B") psB += ps;
-        });
-        (td.thuNgoai || []).forEach((k) => {
-          const tt = Number(k.thucThu) || 0, st = Number(k.soTien) || 0;
-          if (k.nguoiThu === "A") { thuA += tt; psA += st; } else if (k.nguoiThu === "B") { thuB += tt; psB += st; }
-        });
-        (td.chiPhi || []).forEach((c) => {
-          const e = Number(c.soTien) || 0, kk = Number(c.daTra) || 0;
-          if (c.loai === "CHUYEN") { if (c.huong === "A->B") { thuA -= e; thuB += e; } else { thuB -= e; thuA += e; } return; }
-          if (c.loai === "NO_AB") return;
-          if (c.nguoiChi === "A") { chiA += e; traA += kk; } else { chiB += e; traB += kk; }
-          thangNoNCC += (e - kk); // chi chua tra
-        });
-        noNCC += thangNoNCC;
-        giuA += thuA - traA; giuB += thuB - traB;
-        const [yy, mm] = m.split("-");
-        const psThang = psA + psB, chiThang = chiA + chiB, thuThang = thuA + thuB, traThang = traA + traB;
-        ls.push({ thang: `T${Number(mm)}/${yy}`, mm: Number(mm), yy: Number(yy), laiKeToan: psThang - chiThang, laiTienMat: thuThang - traThang, psThang, chiThang, thuThang, traThang, noNCC, thuA, thuB, traA, traB, chiA, chiB, giuACum: giuA, giuBCum: giuB, deltaA: thuA - traA, deltaB: thuB - traB });
-      }
-      if (!huy) { setLuyKe({ giuA, giuB, noNCC }); setLichSu(ls); }
-    })();
-    return () => { huy = true; };
-  }, [meta, students, ym, mData]);
-
-  const cp = mData.chiPhi || [];
-  const [nd, setNd] = useState(""); const [so, setSo] = useState(""); const [ng, setNg] = useState("A"); const [loai, setLoai] = useState("PHAT_SINH"); const [huong, setHuong] = useState("A->B");
-  const [showCoDinh, setShowCoDinh] = useState(true);
-  const add = () => {
-    if (loai === "TRA_NO") {
-      if (!nd.trim()) return;
-      upMData({ ...mData, chiPhi: [...cp, { id: uid(), noiDung: nd.trim(), soTien: 0, nguoiChi: ng, daTra: Number(so) || 0, loai: "TRA_NO" }] });
-      setNd(""); setSo(""); return;
-    }
-    if (!so) return;
-    if (loai === "CHUYEN") { upMData({ ...mData, chiPhi: [...cp, { id: uid(), noiDung: nd.trim() || "Chuyển tiền", soTien: Number(so), loai: "CHUYEN", huong, daTra: 0 }] }); setNd(""); setSo(""); return; }
-    if (!nd.trim()) return;
-    const item = { id: uid(), noiDung: nd.trim(), soTien: Number(so), nguoiChi: ng, daTra: 0, loai }; if (loai === "NO_AB") item.huong = huong;
-    upMData({ ...mData, chiPhi: [...cp, item] }); setNd(""); setSo("");
-  };
-  const set = (id, p) => upMData({ ...mData, chiPhi: cp.map((c) => (c.id === id ? { ...c, ...p } : c)) });
-  const del = (id) => upMData({ ...mData, chiPhi: cp.filter((c) => c.id !== id) });
-  // [Dot2] tra du tat ca khoan co dinh + phat sinh dang con thieu
-  const traDuTatCa = async () => {
-    const targets = cp.filter((c) => (c.loai === "CO_DINH" || c.loai === "PHAT_SINH") && (Number(c.soTien) || 0) > 0 && (Number(c.daTra) || 0) < (Number(c.soTien) || 0));
-    if (targets.length === 0) { toast("Không còn khoản nào cần trả đủ."); return; }
-    if (!(await ask(`Đánh "đã trả đủ" cho ${targets.length} khoản đang còn thiếu?\n(chỉ áp khoản Cố định + Phát sinh đã nhập số tiền)`, { okText: "Trả đủ hết" }))) return;
-    const ids = new Set(targets.map((c) => c.id));
-    upMData({ ...mData, chiPhi: cp.map((c) => ids.has(c.id) ? { ...c, daTra: Number(c.soTien) || 0 } : c) });
-    logAction(`Trả đủ hàng loạt ${targets.length} khoản chi (T${ym})`);
-    toast(`Đã đánh trả đủ ${targets.length} khoản.`);
-  };
-  const themCoDinhMau = () => {
-    const co = ["Lương giáo viên", "Thực phẩm 1", "Thực phẩm 2", "Tiền điện", "Tiền nước"].filter((t) => !cp.some((c) => c.noiDung === t && c.loai === "CO_DINH"));
-    if (!co.length) { setShowCoDinh((v) => !v); return; }
-    upMData({ ...mData, chiPhi: [...cp, ...co.map((t) => ({ id: uid(), noiDung: t, soTien: 0, nguoiChi: "A", loai: "CO_DINH", daTra: 0 }))] });
-    toast(`Đã thêm ${co.length} khoản cố định.`);
-    setShowCoDinh(true);
-  };
-  const tongChi = tk.chiA + tk.chiB, tongTra = tk.traA + tk.traB;
-  const lnKeToan = tk.ps - tongChi;
-  const lnTienMat = tk.thu - tongTra;
-  const tyLeA = meta?.tyLeLaiA ?? 50;
-  const noAB = tk.noAB_AtoB - tk.noAB_BtoA;
-  const noNCC = tongChi - tongTra;
-  const tongTienMat = (luyKe ? luyKe.giuA + luyKe.giuB : (tk.A - tk.traA) + (tk.B - tk.traB));
-
-  const chotThang = async () => {
-    const chuaThu = allRows.filter((r) => r.coRec && r.ps.tong > 0 && (r.rec.thucThu || 0) === 0).length;
-    const ngayAn0 = allRows.filter((r) => r.coRec && r.hs.pl !== "GV" && r.hs.pl !== "T7" && (r.rec.ngayAn || 0) === 0).length;
-    let cb = [];
-    if (ngayAn0) cb.push(`• ${ngayAn0} HS có ngày ăn = 0`);
-    if (chuaThu) cb.push(`• ${chuaThu} HS chưa thu`);
-    const msg = `Chốt tháng ${month}/${year}?\n` + (cb.length ? "\nLưu ý:\n" + cb.join("\n") + "\n" : "") + "\nSau khi chốt sẽ khóa (mở lại được).";
-    if (await ask(msg, { okText: "Chốt tháng" })) {
-      const noLuyKe = {};
-      allRows.forEach((r) => { if (r.coRec) noLuyKe[r.hs.id] = r.conNo; });
-      await upMData({ ...mData, daChot: true, noLuyKe });
-      logAction(`Chốt tháng ${month}/${year}`);
-      toast("Đã chốt tháng.");
-    }
-  };
-  const moChot = async () => { if (await ask("Mở khóa tháng đã chốt để chỉnh sửa lại?", { okText: "Mở khóa" })) { const { noLuyKe, ...rest } = mData; await upMData({ ...rest, daChot: false }); logAction(`Mở khóa tháng ${month}/${year}`); toast("Đã mở khóa."); } };
-
-  const giuThangA = tk.A - tk.traA, giuThangB = tk.B - tk.traB;
-
-  // [CARD HEADER] Helper
-  const CardHeader = ({ icon, title, cardKey, children }) => (
-    <div onClick={() => toggleCard(cardKey)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", padding: "12px 14px", borderBottom: openCards[cardKey] ? `1px solid ${C.line}` : "none" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 16 }}>{icon}</span>
-        <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 15, color: C.ink }}>{title}</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {children}
-        <span style={{ fontSize: 14, color: C.sub, transition: "transform .2s", transform: openCards[cardKey] ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
-      </div>
-    </div>
-  );
-
-  // [Dot1] So lieu cho cac the tom tat Dashboard
-  const recRows0 = allRows.filter((r) => r.coRec);
-  const dashTong = students.length;
-  const dashDangHoc = students.filter((s) => s.trangThai === "Đang học").length;
-  const canThuAll = recRows0.reduce((a, r) => a + r.tongPhaiThu, 0);
-  const daThuAll = recRows0.reduce((a, r) => a + (r.rec.thucThu || 0), 0);
-  const tyLeThu = canThuAll > 0 ? Math.round(daThuAll / canThuAll * 100) : 100;
-  const noRows = recRows0.filter((r) => r.conNo > 0);
-  const conNoAll = noRows.reduce((a, r) => a + r.conNo, 0);
-  const cpKhoan = cp.filter((c) => c.loai === "CO_DINH" || c.loai === "PHAT_SINH");
-  const cpXong = (c) => (Number(c.soTien) || 0) > 0 && (Number(c.daTra) || 0) >= (Number(c.soTien) || 0);
-  const cpDone = cpKhoan.filter(cpXong);
-  const cpChua = cpKhoan.filter((c) => !cpXong(c));
-  const cpPct = cpKhoan.length > 0 ? Math.round(cpDone.length / cpKhoan.length * 100) : 0;
-  const cbGroups = [
-    ["Học phí/khoản sửa tay", recRows0.filter((r) => r.ps.suaCount > 0), C.amber],
-    ["Thu thừa", recRows0.filter((r) => r.conNo < 0), C.blueA],
-    ["Ngày ăn = 0", recRows0.filter((r) => r.hs.pl !== "GV" && r.hs.pl !== "T7" && (r.rec.ngayAn || 0) === 0), C.coral],
-  ].filter((g) => g[1].length > 0);
-  const sheetTitle = { fontFamily: font.display, fontWeight: 700, fontSize: 14.5, color: C.ink, margin: "14px 0 8px" };
-  const drillBtn = { background: C.pine, color: "#fff", fontWeight: 700, fontSize: 13, padding: "8px 18px", borderRadius: 9, border: "none", cursor: "pointer" };
-
-  return (
-    <>
-      {/* ===== KHỐI 2: THẺ VẬN HÀNH & DOANH THU ===== */}
-      <Card style={{ marginBottom: 12, boxShadow: "0 3px 12px -8px rgba(23,107,91,.5)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 16 }}>📊</span>
-          <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 15, color: C.ink }}>Tổng quan vận hành — T{month}/{year}</span>
-        </div>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <Donut pct={tyLeThu} color={tyLeThu >= 80 ? C.green : tyLeThu >= 50 ? C.amber : C.coral} size={66} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", gap: 18, marginBottom: 8 }}>
-              <div><div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 19, color: C.ink }}>{dashTong}</div><div style={{ fontSize: 10.5, color: C.sub }}>Tổng HS</div></div>
-              <div><div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 19, color: C.green }}>{dashDangHoc}</div><div style={{ fontSize: 10.5, color: C.sub }}>Đang học</div></div>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "1px 0" }}><span style={{ color: C.sub }}>Cần thu</span><b>{fmt(canThuAll)}</b></div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "1px 0" }}><span style={{ color: C.sub }}>Đã thu ({tyLeThu}%)</span><b style={{ color: C.green }}>{fmt(daThuAll)}</b></div>
-          </div>
-        </div>
-        {noRows.length > 0 && (
-          <button onClick={() => setTab && setTab("no")} style={{ width: "100%", marginTop: 10, padding: "8px 0", borderRadius: 9, border: `1px solid #EFC9BF`, background: C.coralSoft, color: C.coral, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>🔴 {noRows.length} HS còn nợ — {fmt(conNoAll)} đ ❯</button>
-        )}
-      </Card>
-
-      {/* ===== KHỐI 3: THANH CẢNH BÁO ===== */}
-      {cbGroups.length > 0 && (
-        <button onClick={() => setSheetCB(true)} style={{ width: "100%", textAlign: "left", marginBottom: 12, padding: "10px 14px", borderRadius: 12, border: `1px solid #EAD8A0`, background: C.amberSoft, color: "#7A5E12", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🚨 Cảnh báo: {cbGroups.map((g) => `${g[0]} (${g[1].length})`).join(" · ")}</span>
-          <span style={{ flexShrink: 0, fontWeight: 700 }}>❯</span>
-        </button>
-      )}
-
-      {/* ===== KHỐI 4: THẺ CHI PHÍ CHECKLIST ===== */}
-      <Card style={{ marginBottom: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16 }}>💸</span><span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 15 }}>Chi phí tháng {month}</span></div>
-          <span style={{ fontSize: 12, color: C.sub }}>Tổng chi: <b style={{ color: C.ink }}>{fmt(tongChi)}</b></span>
-        </div>
-        <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 6 }}>📊 {cpDone.length}/{cpKhoan.length} khoản đã xử lý</div>
-        <div style={{ height: 8, borderRadius: 99, background: C.line, overflow: "hidden", marginBottom: 10 }}>
-          <div style={{ width: cpPct + "%", height: "100%", background: cpPct >= 100 ? C.green : C.pine, borderRadius: 99, transition: "width .3s" }} />
-        </div>
-        {cpChua.slice(0, 2).map((c) => (
-          <div key={c.id} style={{ fontSize: 13, color: C.ink, padding: "3px 0" }}>🔴 {c.noiDung}: <span style={{ color: C.coral, fontWeight: 600 }}>{(Number(c.daTra) || 0) > 0 ? "Trả 1 phần" : "Chưa trả"}</span></div>
-        ))}
-        {cpKhoan.length > 0 && cpChua.length === 0 && <div style={{ fontSize: 13, color: C.green, fontWeight: 600, padding: "3px 0" }}>✓ Đã xử lý hết các khoản chi</div>}
-        {cpKhoan.length === 0 && <div style={{ fontSize: 13, color: C.sub, padding: "3px 0" }}>Chưa có khoản chi nào — bấm Quản lý để thêm.</div>}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-          <button onClick={() => setSheetCP(true)} style={drillBtn}>Quản lý ❯</button>
-        </div>
-      </Card>
-
-      {/* ===== KHỐI 5: THẺ LỢI NHUẬN & CHIA QUỸ ===== */}
-      <Card style={{ marginBottom: 12, background: C.greenSoft, borderColor: "#BFE3CC" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}><span style={{ fontSize: 16 }}>🤝</span><span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 15 }}>Lợi nhuận & chia quỹ</span></div>
-        <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 4px", background: C.card, borderRadius: 10 }}><div style={{ fontSize: 10.5, color: C.green, fontWeight: 600 }}>LN kế toán</div><div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 15, color: lnKeToan < 0 ? C.coral : C.green }}>{fmt(lnKeToan)}</div></div>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 4px", background: C.card, borderRadius: 10 }}><div style={{ fontSize: 10.5, color: C.blueA, fontWeight: 600 }}>LN tiền mặt</div><div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 15, color: lnTienMat < 0 ? C.coral : C.blueA }}>{fmt(lnTienMat)}</div></div>
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 4px", background: C.card, borderRadius: 10 }}><div style={{ fontSize: 10.5, color: C.blueA, fontWeight: 600 }}>Quỹ A giữ</div><div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 15, color: (luyKe?.giuA ?? 0) < 0 ? C.coral : C.blueA }}>{luyKe ? fmt(luyKe.giuA) : "…"}</div></div>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 4px", background: C.card, borderRadius: 10 }}><div style={{ fontSize: 10.5, color: C.violetB, fontWeight: 600 }}>Quỹ B giữ</div><div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 15, color: (luyKe?.giuB ?? 0) < 0 ? C.coral : C.violetB }}>{luyKe ? fmt(luyKe.giuB) : "…"}</div></div>
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-          <button onClick={() => setSheetLN(true)} style={drillBtn}>Chi tiết ❯</button>
-        </div>
-      </Card>
-
-      {/* ===== KHỐI 6: LỊCH SỬ ===== */}
-      <button onClick={() => setSheetLS(true)} style={{ width: "100%", textAlign: "left", marginBottom: 12, padding: "12px 14px", borderRadius: 12, border: `1px solid ${C.line}`, background: C.card, color: C.ink, fontSize: 13.5, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span>📈 Lịch sử các tháng trước</span><span style={{ color: C.sub, fontWeight: 700 }}>❯</span>
-      </button>
-
-      {/* ===== CHỐT THÁNG / XÓA ===== */}
-      {!locked
-        ? <button onClick={chotThang} style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: `1.5px solid ${C.gold}`, background: C.goldSoft, color: "#7A5E12", fontFamily: font.display, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>🔒 Chốt tháng {month}/{year}</button>
-        : <button onClick={moChot} style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: `1.5px solid ${C.line}`, background: C.card, color: C.sub, fontFamily: font.display, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>🔓 Mở khóa tháng {month}/{year}</button>}
-      {!locked && (
-        <div style={{ marginTop: 8 }}>
-          {!showDelConfirm ? (
-            <button onClick={() => setShowDelConfirm(true)} style={{ width: "100%", padding: "11px 0", borderRadius: 12, border: `1.5px solid ${C.coralSoft}`, background: C.card, color: C.coral, fontFamily: font.body, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>🗑 Xóa bảng thu tháng này (tạo lại)</button>
-          ) : (
-            <div style={{ background: C.coralSoft, borderRadius: 12, padding: 12, border: `1.5px solid ${C.coral}` }}>
-              <div style={{ fontSize: 13, color: C.coral, fontWeight: 700, marginBottom: 8 }}>⚠️ Nhập "XOA" để xác nhận xóa bảng thu tháng {month}/{year}</div>
-              <input value={delConfirmText} onChange={(e) => setDelConfirmText(e.target.value)} placeholder="Nhập XOA" style={{ width: "100%", padding: "10px", borderRadius: 8, border: `1.5px solid ${C.line}`, fontSize: 14, marginBottom: 8, textAlign: "center", fontWeight: 700, textTransform: "uppercase" }} />
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => { setShowDelConfirm(false); setDelConfirmText(""); }} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1.5px solid ${C.line}`, background: C.card, color: C.sub, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Hủy</button>
-                <button onClick={() => { if (delConfirmText.trim().toUpperCase() === "XOA") { delThang(); setShowDelConfirm(false); setDelConfirmText(""); } else { toast("Nhập sai — gõ XOA để xác nhận"); } }} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", background: delConfirmText.trim().toUpperCase() === "XOA" ? C.coral : C.graySoft, color: "#fff", fontWeight: 700, fontSize: 13, cursor: delConfirmText.trim().toUpperCase() === "XOA" ? "pointer" : "default" }}>🗑 Xóa</button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ============ BOTTOM SHEETS ============ */}
-      {/* Sheet cảnh báo */}
-      <BottomSheet open={sheetCB} onClose={() => setSheetCB(false)} title={`Cảnh báo bất thường — T${month}/${year}`}>
-        {cbGroups.length === 0 ? <div style={{ color: C.green, fontSize: 14, padding: 10 }}>✓ Không có bất thường.</div> : cbGroups.map((g) => (
-          <div key={g[0]} style={{ marginBottom: 14 }}>
-            <div style={{ fontWeight: 700, fontSize: 13.5, color: g[2], marginBottom: 4 }}>{g[0]} ({g[1].length})</div>
-            {g[1].map((r) => (
-              <div key={r.hs.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "7px 0", borderBottom: `1px solid ${C.line}` }}>
-                <span>{r.hs.ten} <span style={{ color: C.sub, fontSize: 11 }}>· {r.lop?.ten}</span></span>
-              </div>
-            ))}
-          </div>
-        ))}
-      </BottomSheet>
-
-      {/* Sheet chi phí (nội dung nhập liệu đầy đủ) */}
-      <BottomSheet open={sheetCP} onClose={() => setSheetCP(false)} title={`Chi tiết chi phí — T${month}/${year}`}>
-        <div style={{ display: "flex", gap: 14, fontSize: 12.5, color: C.sub, marginBottom: 10, flexWrap: "wrap" }}>
-          <span>Tổng chi <b style={{ color: C.ink }}>{fmt(tongChi)}</b></span>
-          <span>Đã trả <b style={{ color: C.green }}>{fmt(tongTra)}</b></span>
-          <span>Nợ NCC <b style={{ color: noNCC > 0 ? C.coral : C.green }}>{fmt(noNCC)}</b></span>
-          {!locked && <button onClick={themCoDinhMau} style={{ marginLeft: "auto", background: C.pineSoft, color: C.pine, border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{cp.filter((c) => c.loai === "CO_DINH").length === 5 ? (showCoDinh ? "Ẩn" : "Hiện") + " 5 cố định" : "+ 5 khoản cố định"}</button>}
-        </div>
-        {!locked && (
-          <button onClick={traDuTatCa} style={{ width: "100%", marginBottom: 10, padding: "9px 0", borderRadius: 9, border: `1.5px solid ${C.green}`, background: C.greenSoft, color: C.green, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>✓ Trả đủ tất cả khoản còn thiếu</button>
-        )}
-        {cp.map((c) => {
-          const e = Number(c.soTien) || 0, k = Number(c.daTra) || 0; const isNoAB = c.loai === "NO_AB"; const isCT = c.loai === "CHUYEN";
-          if (c.loai === "CO_DINH" && !showCoDinh) return null;
-          if (c.loai === "TRA_NO") return (
-            <div key={c.id} style={{ padding: "9px 0", borderTop: `1px solid ${C.line}`, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5 }}>
-              <div style={{ fontWeight: 600 }}>💰 Trả nợ NCC · <b style={{ color: c.nguoiChi === "A" ? C.blueA : C.violetB }}>[{c.nguoiChi}]</b> {c.noiDung} · {fmt(k)} đ</div>
-              {!locked && <button onClick={() => del(c.id)} style={{ color: C.coral, border: "none", background: "none", cursor: "pointer", padding: 4 }}>🗑</button>}
-            </div>
-          );
-          if (isCT) return (
-            <div key={c.id} style={{ padding: "9px 0", borderTop: `1px solid ${C.line}`, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5 }}>
-              <div style={{ fontWeight: 600 }}>🔄 Chuyển tiền <b style={{ color: c.huong === "A->B" ? C.blueA : C.violetB }}>{c.huong === "A->B" ? "A → B" : "B → A"}</b> · {fmt(e)} đ</div>
-              {!locked && <button onClick={() => del(c.id)} style={{ color: C.coral, border: "none", background: "none", cursor: "pointer", padding: 4 }}>🗑</button>}
-            </div>
-          );
-          const st = k === 0 ? { t: "Chưa trả", c: C.coral, bg: C.coralSoft } : k < e ? { t: "Trả 1 phần", c: C.amber, bg: C.amberSoft } : { t: "Đã trả", c: C.green, bg: C.greenSoft };
-          return (
-            <div key={c.id} style={{ padding: "9px 0", borderTop: `1px solid ${C.line}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                <div style={{ fontWeight: 600, fontSize: 13.5 }}>{!isNoAB && <span style={{ color: c.nguoiChi === "A" ? C.blueA : C.violetB, fontWeight: 800 }}>[{c.nguoiChi}]</span>} {c.noiDung}{isNoAB && <span style={{ color: C.gold, fontSize: 11, fontWeight: 700 }}> · NỢ {c.huong}</span>}{c.loai === "CO_DINH" && <span style={{ color: C.sub, fontSize: 11 }}> · cố định</span>}</div>
-                <Badge s={st} />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: C.sub }}>
-                  <span style={{ minWidth: 52 }}>Phải trả</span>
-                  {c.loai === "CO_DINH" && !locked
-                    ? (<><NumInput value={c.soTien} onChange={(v) => set(c.id, { soTien: v })} w={120} /><ABBtn val={c.nguoiChi} set={(p) => set(c.id, { nguoiChi: p })} small disabled={locked} /></>)
-                    : (<b style={{ color: C.ink }}>{fmt(e)}</b>)}
-                </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: C.sub }}>
-                  <span style={{ minWidth: 52 }}>Đã trả</span>
-                  <NumInput value={c.daTra} onChange={(v) => set(c.id, { daTra: v })} w={120} disabled={locked} />
-                  {!locked && <button onClick={() => set(c.id, { daTra: e })} style={{ background: C.greenSoft, color: C.green, fontWeight: 700, fontSize: 12, padding: "7px 10px", borderRadius: 8, border: "none", cursor: "pointer" }}>Trả đủ</button>}
-                  {!locked && <button onClick={() => del(c.id)} style={{ color: C.coral, border: "none", background: "none", cursor: "pointer", marginLeft: "auto", padding: 4 }}>🗑</button>}
-                </div>
-                {k > e && <div style={{ fontSize: 11.5, color: C.amber, background: C.amberSoft, borderRadius: 7, padding: "4px 8px" }}>⚠️ Đã trả nhiều hơn phải trả {fmt(k - e)} đ</div>}
-              </div>
-            </div>
-          );
-        })}
-        {!locked && (
-          <div style={{ marginTop: 10, borderTop: `1px solid ${C.line}`, paddingTop: 10 }}>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-              <input value={nd} onChange={(e) => setNd(e.target.value)} placeholder={loai === "TRA_NO" ? "Tên nợ (VD: Thực phẩm T4)" : "Khoản chi"} style={{ flex: "2 1 150px", padding: "9px 10px", borderRadius: 9, border: `1.5px solid ${C.line}`, fontSize: 13, minWidth: 0, fontFamily: font.body }} />
-              {loai !== "TRA_NO" && (
-                <input type="number" value={so} onChange={(e) => setSo(e.target.value)} placeholder="Số tiền" style={{ flex: "1 1 90px", padding: "9px 10px", borderRadius: 9, border: `1.5px solid ${C.line}`, fontSize: 13, minWidth: 0, fontFamily: font.body }} />
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              <select value={loai} onChange={(e) => { setLoai(e.target.value); if (e.target.value === "TRA_NO") { setSo("0"); } }} style={{ padding: "8px 8px", borderRadius: 9, border: `1.5px solid ${C.line}`, fontSize: 12.5, fontFamily: font.body, background: "#fff" }}>{LOAI_CHI.map((l) => <option key={l} value={l}>{l === "PHAT_SINH" ? "Phát sinh" : l === "CO_DINH" ? "Cố định" : l === "NO_AB" ? "Nợ A↔B" : l === "TRA_NO" ? "💰 Trả nợ NCC" : "🔄 Chuyển tiền"}</option>)}</select>
-              {(loai === "NO_AB" || loai === "CHUYEN") ? <select value={huong} onChange={(e) => setHuong(e.target.value)} style={{ padding: "8px 8px", borderRadius: 9, border: `1.5px solid ${C.line}`, fontSize: 12.5, fontFamily: font.body, background: "#fff" }}><option value="A->B">A → B</option><option value="B->A">B → A</option></select> : <ABBtn val={ng} set={setNg} small />}
-              <button onClick={() => { if (loai === "TRA_NO" && !nd.trim()) { toast("Nhập tên nợ cần trả"); return; } add(); }} style={{ background: C.pine, color: "#fff", fontWeight: 700, fontSize: 13, padding: "9px 16px", borderRadius: 9, border: "none", cursor: "pointer", marginLeft: "auto" }}>+ Thêm</button>
-            </div>
-          </div>
-        )}
-        {locked && <div style={{ fontSize: 12.5, color: C.sub, marginTop: 10, textAlign: "center" }}>🔒 Tháng đã chốt — chỉ xem.</div>}
-        <button onClick={() => setSheetCP(false)} style={{ width: "100%", marginTop: 14, padding: "12px 0", borderRadius: 11, border: "none", background: C.pine, color: "#fff", fontFamily: font.display, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>✓ Hoàn thành</button>
-      </BottomSheet>
-
-      {/* Sheet lợi nhuận & chia quỹ chi tiết */}
-      <BottomSheet open={sheetLN} onClose={() => setSheetLN(false)} title={`Lợi nhuận & chia quỹ — T${month}/${year}`}>
-        {/* Thực thu A/B */}
-        <div style={{ background: "#FAFCFA", borderRadius: 12, padding: "10px 12px", marginBottom: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ fontSize: 12.5, color: C.sub, fontWeight: 600 }}>🧾 Doanh thu (thực thu)</span>
-            <b style={{ fontFamily: font.display, fontSize: 17, color: C.ink }}>{fmt(tk.thu)} đ</b>
-          </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 6, fontSize: 12.5 }}>
-            <span style={{ flex: 1 }}>A thu: <b style={{ color: C.blueA }}>{fmt(tk.A)}</b></span>
-            <span style={{ flex: 1 }}>B thu: <b style={{ color: C.violetB }}>{fmt(tk.B)}</b></span>
-          </div>
-        </div>
-        {/* Đã chi A/B */}
-        <div style={{ background: "#FAFCFA", borderRadius: 12, padding: "10px 12px", marginBottom: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ fontSize: 12.5, color: C.sub, fontWeight: 600 }}>💸 Đã chi (tiền mặt ra)</span>
-            <b style={{ fontFamily: font.display, fontSize: 17, color: C.ink }}>{fmt(tongTra)} đ</b>
-          </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 6, fontSize: 12.5 }}>
-            <span style={{ flex: 1 }}>A chi: <b style={{ color: C.blueA }}>{fmt(tk.traA)}</b></span>
-            <span style={{ flex: 1 }}>B chi: <b style={{ color: C.violetB }}>{fmt(tk.traB)}</b></span>
-          </div>
-        </div>
-        {/* LN kế toán / tiền mặt */}
-        <div style={{ display: "flex", gap: 10 }}>
-          <div style={{ flex: 1, textAlign: "center", padding: "9px 4px", background: C.greenSoft, borderRadius: 10 }}><div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>LN kế toán</div><div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 16, color: lnKeToan < 0 ? C.coral : C.green }}>{fmt(lnKeToan)}</div><div style={{ fontSize: 9.5, color: C.sub }}>Phải thu − Chi phí</div></div>
-          <div style={{ flex: 1, textAlign: "center", padding: "9px 4px", background: C.blueASoft, borderRadius: 10 }}><div style={{ fontSize: 11, color: C.blueA, fontWeight: 600 }}>LN tiền mặt</div><div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 16, color: lnTienMat < 0 ? C.coral : C.blueA }}>{fmt(lnTienMat)}</div><div style={{ fontSize: 9.5, color: C.sub }}>Đã thu − Đã trả</div></div>
-        </div>
-
-        {/* Phân chia tài chính + tỷ lệ */}
-        <div style={sheetTitle}>📊 Phân chia tài chính T{month}</div>
-        <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 8 }}>Tổng LN kế toán toàn trường: <b style={{ color: lnKeToan < 0 ? C.coral : C.green, fontSize: 14 }}>{fmt(lnKeToan)} đ</b></div>
-        {!locked && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, background: C.goldSoft, borderRadius: 10, padding: "8px 10px" }}>
-            <span style={{ fontSize: 12, color: "#7A5E12", fontWeight: 600 }}>Tỷ lệ chia</span>
-            <button onClick={() => upMeta({ ...meta, tyLeLaiA: Math.max(0, tyLeA - 5) })} style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 800, fontSize: 17, cursor: "pointer", lineHeight: 1 }}>−</button>
-            <span style={{ minWidth: 92, textAlign: "center", fontSize: 13, fontWeight: 700 }}>A {tyLeA}% / B {100 - tyLeA}%</span>
-            <button onClick={() => upMeta({ ...meta, tyLeLaiA: Math.min(100, tyLeA + 5) })} style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 800, fontSize: 17, cursor: "pointer", lineHeight: 1 }}>+</button>
-          </div>
-        )}
-        <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 6 }}>
-          <div style={{ display: "flex", background: "#FAFCFA", fontSize: 11.5, color: C.sub, fontWeight: 700, padding: "7px 10px" }}>
-            <span style={{ flex: 1.5 }}>Nội dung</span>
-            <span style={{ flex: 1, textAlign: "right", color: C.blueA }}>Người A</span>
-            <span style={{ flex: 1, textAlign: "right", color: C.violetB }}>Người B</span>
-          </div>
-          <div style={{ display: "flex", fontSize: 12.5, padding: "8px 10px", borderTop: `1px solid ${C.line}` }}>
-            <span style={{ flex: 1.5 }}>💰 Lãi được chia</span>
-            <b style={{ flex: 1, textAlign: "right", color: C.blueA }}>{fmt(Math.round(lnKeToan * tyLeA / 100))}</b>
-            <b style={{ flex: 1, textAlign: "right", color: C.violetB }}>{fmt(lnKeToan - Math.round(lnKeToan * tyLeA / 100))}</b>
-          </div>
-          <div style={{ display: "flex", fontSize: 12.5, padding: "8px 10px", borderTop: `1px solid ${C.line}` }}>
-            <div style={{ flex: 1.5 }}>🏦 Quỹ trường đang giữ<div style={{ fontSize: 10, color: C.sub }}>(lũy kế đến hết tháng)</div></div>
-            <div style={{ flex: 1, textAlign: "right" }}><b style={{ color: (luyKe?.giuA ?? 0) < 0 ? C.coral : C.blueA }}>{luyKe ? fmt(luyKe.giuA) : "…"}</b><div style={{ fontSize: 10, color: giuThangA < 0 ? C.coral : C.sub }}>T{month}: {fmt(giuThangA)}</div></div>
-            <div style={{ flex: 1, textAlign: "right" }}><b style={{ color: (luyKe?.giuB ?? 0) < 0 ? C.coral : C.violetB }}>{luyKe ? fmt(luyKe.giuB) : "…"}</b><div style={{ fontSize: 10, color: giuThangB < 0 ? C.coral : C.sub }}>T{month}: {fmt(giuThangB)}</div></div>
-          </div>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, paddingTop: 2 }}><span style={{ color: C.sub }}>Tổng quỹ trường đang giữ</span><b style={{ color: tongTienMat < 0 ? C.coral : C.pine }}>{fmt(tongTienMat)} đ</b></div>
-        <div style={{ fontSize: 11, color: C.sub, marginTop: 4 }}>Quỹ âm = A/B đang ứng tiền túi, trường nợ lại.</div>
-
-        {(tk.noAB_AtoB > 0 || tk.noAB_BtoA > 0) && (<>
-          <div style={sheetTitle}>Nợ nội bộ A ↔ B</div>
-          {noAB > 0 && <div style={{ fontSize: 13.5 }}>A đang nợ B: <b style={{ color: C.gold }}>{fmt(noAB)} đ</b></div>}
-          {noAB < 0 && <div style={{ fontSize: 13.5 }}>B đang nợ A: <b style={{ color: C.gold }}>{fmt(-noAB)} đ</b></div>}
-          {noAB === 0 && <div style={{ fontSize: 13.5, color: C.green }}>Đã cấn trừ xong.</div>}
-        </>)}
-
-        <button onClick={() => setSheetLN(false)} style={{ width: "100%", marginTop: 14, padding: "12px 0", borderRadius: 11, border: "none", background: C.pine, color: "#fff", fontFamily: font.display, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>✓ Hoàn thành</button>
-      </BottomSheet>
-
-      {/* Sheet lịch sử các tháng */}
-      <BottomSheet open={sheetLS} onClose={() => setSheetLS(false)} title="Lịch sử các tháng trước">
-        {!lichSu || lichSu.length === 0 ? <div style={{ color: C.sub, fontSize: 14, padding: 10, textAlign: "center" }}>Chưa có dữ liệu các tháng.</div> : (() => {
-          const splitA = (v) => Math.round(v * tyLeA / 100);
-          const rev = [...lichSu].reverse(); // moi nhat len dau
-          const tongLKT = lichSu.reduce((a, r) => a + r.laiKeToan, 0);
-          const tongLTM = lichSu.reduce((a, r) => a + r.laiTienMat, 0);
-          const rowLine = { display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "1px 0" };
-          const sub2 = (la, va, lb, vb) => (
-            <div style={{ display: "flex", gap: 10, marginTop: 3, fontSize: 12 }}>
-              <span style={{ flex: 1, color: C.sub }}>{la} <b style={{ color: C.blueA }}>{fmt(va)}</b></span>
-              <span style={{ flex: 1, color: C.sub }}>{lb} <b style={{ color: C.violetB }}>{fmt(vb)}</b></span>
-            </div>
-          );
-          return (
-          <div>
-            {rev.map((r) => {
-              const aKT = splitA(r.laiKeToan), bKT = r.laiKeToan - aKT;
-              return (
-              <div key={r.thang} style={{ border: `1px solid ${C.line}`, borderRadius: 14, marginBottom: 12, overflow: "hidden" }}>
-                <div style={{ background: C.pineSoft, padding: "8px 12px", fontFamily: font.display, fontWeight: 800, fontSize: 14.5, color: C.pine }}>📅 Tháng {r.mm}/{r.yy}</div>
-                <div style={{ padding: "10px 12px" }}>
-                  <div style={rowLine}><span style={{ color: C.sub, fontWeight: 600 }}>🧾 Doanh thu (thực thu)</span><b style={{ color: C.ink }}>{fmt(r.thuThang)} đ</b></div>
-                  {sub2("A thu:", r.thuA, "B thu:", r.thuB)}
-                  <div style={{ ...rowLine, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.line}` }}><span style={{ color: C.sub, fontWeight: 600 }}>💸 Chi phí xử lý (đã chi)</span><b style={{ color: C.ink }}>{fmt(r.traThang)} đ</b></div>
-                  {sub2("A chi:", r.traA, "B chi:", r.traB)}
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.line}` }}>
-                    <div style={{ fontSize: 12.5, color: C.sub, fontWeight: 600, marginBottom: 6 }}>📊 Phân chia tài chính · LN kế toán: <b style={{ color: r.laiKeToan < 0 ? C.coral : C.green }}>{fmt(r.laiKeToan)} đ</b></div>
-                    <div style={{ border: `1px solid ${C.line}`, borderRadius: 9, overflow: "hidden" }}>
-                      <div style={{ display: "flex", background: "#FAFCFA", fontSize: 11, color: C.sub, fontWeight: 700, padding: "5px 9px" }}>
-                        <span style={{ flex: 1.5 }}>Nội dung</span>
-                        <span style={{ flex: 1, textAlign: "right", color: C.blueA }}>Người A</span>
-                        <span style={{ flex: 1, textAlign: "right", color: C.violetB }}>Người B</span>
-                      </div>
-                      <div style={{ display: "flex", fontSize: 12, padding: "6px 9px", borderTop: `1px solid ${C.line}` }}>
-                        <span style={{ flex: 1.5 }}>💰 Lãi chia ({tyLeA}/{100 - tyLeA})</span>
-                        <b style={{ flex: 1, textAlign: "right", color: C.blueA }}>{fmt(aKT)}</b>
-                        <b style={{ flex: 1, textAlign: "right", color: C.violetB }}>{fmt(bKT)}</b>
-                      </div>
-                      <div style={{ display: "flex", fontSize: 12, padding: "6px 9px", borderTop: `1px solid ${C.line}` }}>
-                        <div style={{ flex: 1.5 }}>🏦 Quỹ trường giữ<div style={{ fontSize: 9.5, color: C.sub }}>(lũy kế)</div></div>
-                        <div style={{ flex: 1, textAlign: "right" }}><b style={{ color: r.giuACum < 0 ? C.coral : C.blueA }}>{fmt(r.giuACum)}</b><div style={{ fontSize: 9.5, color: r.deltaA < 0 ? C.coral : C.sub }}>T{r.mm}: {fmt(r.deltaA)}</div></div>
-                        <div style={{ flex: 1, textAlign: "right" }}><b style={{ color: r.giuBCum < 0 ? C.coral : C.violetB }}>{fmt(r.giuBCum)}</b><div style={{ fontSize: 9.5, color: r.deltaB < 0 ? C.coral : C.sub }}>T{r.mm}: {fmt(r.deltaB)}</div></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              );
-            })}
-            <div style={{ background: C.goldSoft, border: `1px solid #EAD8A0`, borderRadius: 12, padding: "10px 12px", marginBottom: 4 }}>
-              <div style={{ fontFamily: font.display, fontWeight: 800, fontSize: 13.5, color: "#7A5E12", marginBottom: 4 }}>Σ Cộng tất cả các tháng</div>
-              <div style={rowLine}><span style={{ color: C.sub }}>Tổng LN kế toán</span><b style={{ color: tongLKT < 0 ? C.coral : C.green }}>{fmt(tongLKT)} đ</b></div>
-              <div style={rowLine}><span style={{ color: C.sub }}>Tổng LN tiền mặt</span><b style={{ color: tongLTM < 0 ? C.coral : C.blueA }}>{fmt(tongLTM)} đ</b></div>
-              <div style={rowLine}><span style={{ color: C.sub }}>Chia lãi · A {tyLeA}% / B {100 - tyLeA}%</span><b><span style={{ color: C.blueA }}>{fmt(splitA(tongLKT))}</span> / <span style={{ color: C.violetB }}>{fmt(tongLKT - splitA(tongLKT))}</span></b></div>
-            </div>
-          </div>
-          );
-        })()}
-        <button onClick={() => setSheetLS(false)} style={{ width: "100%", marginTop: 14, padding: "12px 0", borderRadius: 11, border: "none", background: C.pine, color: "#fff", fontFamily: font.display, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>✓ Hoàn thành</button>
-      </BottomSheet>
-    </>
-  );
-}
 function ImportHSExcel({ meta, students, upStudents, ym }) {
   const [busy, setBusy] = useState(false);
   const [paste, setPaste] = useState("");
