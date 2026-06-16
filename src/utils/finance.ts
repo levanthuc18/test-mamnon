@@ -2,9 +2,9 @@ import type { HocSinh, Lop, FeeRecord, KhoanPhiDef, PhanLoai } from '../types';
 
 export const PHAN_LOAI: PhanLoai[] = ['Bthg', 'AE', 'GV', 'T7'];
 
-export const PL_HE: Record<<PhanLoai, number> = { Bthg: 1, AE: 0.5, GV: 0, T7: 0 };
+export const PL_HE: Record<PhanLoai, number> = { Bthg: 1, AE: 0.5, GV: 0, T7: 0 };
 
-export const PL_LABEL: Record<<PhanLoai, string> = {
+export const PL_LABEL: Record<PhanLoai, string> = {
   Bthg: 'Bình thường',
   AE: 'Anh em (−50%)',
   GV: 'Con GV (miễn)',
