@@ -8,7 +8,7 @@ const lopMau: Lop = {
   ngoaiKhoa: 100000, dongPhuc: 200000, dauNam: 1200000,
 };
 
-function makeRec(partial?: Partial<<FeeRecord>): FeeRecord {
+function makeRec(partial?: Partial<FeeRecord>): FeeRecord {
   return {
     ngayAn: 22, buoiT7: 0, thucThu: 0,
     khoan: {}, khoanDefault: {}, phuThu: [],
